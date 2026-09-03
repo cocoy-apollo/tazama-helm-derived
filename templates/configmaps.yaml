@@ -1,8 +1,18 @@
+{{- /*
+  configmaps.yaml - Core Tazama Configuration
+  Uses conditional helpers to resolve endpoints based on infrastructure mode
+  
+  C1: Configuration dynamically resolves to internal or external endpoints
+*/ -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: tazama-core-config
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: tazama-core-config
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: tazama
 data:
   NODE_ENV: "dev"
   LOG_LEVEL: "info"
@@ -11,20 +21,35 @@ data:
   APM_ACTIVE: "false"
   ELASTIC_APM_ACTIVE: "false"
 
-  # Infrastructure Network Coordinates
-  SERVER_URL: "nats:4222"
-  REDIS_SERVERS: '[{"host":"valkey", "port":6379}]'
+  # Infrastructure Network Coordinates - Dynamic Resolution
+  # NATS Server URL
+  SERVER_URL: {{ include "tazama.nats.url" $ | quote }}
+  
+  # Valkey/Redis Configuration
+  REDIS_SERVERS: {{ include "tazama.valkey.serversJson" $ }}
+  {{- if .Values.infrastructure.valkey.external.cluster }}
+  REDIS_IS_CLUSTER: {{ .Values.infrastructure.valkey.external.cluster.enabled | default false | quote }}
+  {{- else }}
   REDIS_IS_CLUSTER: "false"
-  CONFIGURATION_DATABASE_HOST: "postgres"
-  EVENT_HISTORY_DATABASE_HOST: "postgres"
-  RAW_HISTORY_DATABASE_HOST: "postgres"
-  EVALUATION_DATABASE_HOST: "postgres"
+  {{- end }}
+  
+  # Database Hosts - All schemas on same server
+  CONFIGURATION_DATABASE_HOST: {{ include "tazama.database.host" (dict "component" "postgres" "context" $) }}
+  EVENT_HISTORY_DATABASE_HOST: {{ include "tazama.database.host" (dict "component" "postgres" "context" $) }}
+  RAW_HISTORY_DATABASE_HOST: {{ include "tazama.database.host" (dict "component" "postgres" "context" $) }}
+  EVALUATION_DATABASE_HOST: {{ include "tazama.database.host" (dict "component" "postgres" "context" $) }}
+  
+  # Database Ports
+  CONFIGURATION_DATABASE_PORT: {{ include "tazama.database.port" (dict "component" "postgres" "context" $) | quote }}
+  EVENT_HISTORY_DATABASE_PORT: {{ include "tazama.database.port" (dict "component" "postgres" "context" $) | quote }}
+  RAW_HISTORY_DATABASE_PORT: {{ include "tazama.database.port" (dict "component" "postgres" "context" $) | quote }}
+  EVALUATION_DATABASE_PORT: {{ include "tazama.database.port" (dict "component" "postgres" "context" $) | quote }}
 
-  # Database Schema Names (Required for rc version)
-  CONFIGURATION_DATABASE: "configuration"
-  EVENT_HISTORY_DATABASE: "event_history"
-  RAW_HISTORY_DATABASE: "raw_history"
-  EVALUATION_DATABASE: "evaluation"
+  # Database Schema Names
+  CONFIGURATION_DATABASE: {{ .Values.infrastructure.postgres.external.database | default "configuration" }}
+  EVENT_HISTORY_DATABASE: {{ .Values.infrastructure.postgres.external.database | default "event_history" }}
+  RAW_HISTORY_DATABASE: {{ .Values.infrastructure.postgres.external.database | default "raw_history" }}
+  EVALUATION_DATABASE: {{ .Values.infrastructure.postgres.external.database | default "evaluation" }}
 
   # NATS Core Stream Message Routing Matrix
   INTERDICTION_PRODUCER: "interdiction"

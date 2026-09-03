@@ -1,260 +1,472 @@
 # Tazama Helm Chart
 
-This repo is an ongoing project to develop a Helm chart for [Tazama](https://github.com/tazama-lf) as an alternative for the [current on-prem Helm](https://github.com/tazama-lf/On-Prem-Helm).  It was rebuilt from scratch using the [Full Stack Docker repo](https://github.com/tazama-lf/Full-Stack-Docker-Tazama) as basis.
+A flexible Helm chart for deploying the Tazama financial crime detection platform with support for both internal and external infrastructure components.
 
-The Helm chart and the documentation are intended for DevOps teams looking at deploying Tazama on Kubernetes.  The Helm chart provides a basic reference to show how the important pieces fit together, which a DevOps team might then adapt using their internal best practice, for example, using their own database.  The Helm chart here *should not be considered production-ready.*
+## Table of Contents
 
-A key difference of this Helm chart from the current official ones is that we don't build the container images from source using Jenkins.  Instead, we pull our Tazama container images and rules from existing registries, in particular, [the Tazama DockerHub](https://hub.docker.com/r/tazamaorg/).  We consider the building of the container images to be a separate CI process.
+- [Key Concepts](#key-concepts)
+- [Infrastructure Options](#infrastructure-options)
+- [Installation](#installation)
+- [Configuration Reference](#configuration-reference)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+
+---
 
 ## Key Concepts
-The Helm chart decomposes Tazama into the following component groups:
 
-- Infrastructure, consisting of **NATS**, **Postgres**, and **Valkey**.  These are the foundational services used by other Tazama-specific services.  In practice, there is no need to deploy these services in the same Helm chart.  DevOps teams may consider replacing these components with their own versions, following their own best practices.
-- Core Services, which are the Tazama-specific microservices.  These are: the **Admin Service**, the **Transaction Monitoring System API**, the **Event Director**, the **Event Flow Rule Processor**, the **Typology Processor**, and the **Transaction Aggregation and Decisioning Processor.**  Admin Service and TMS API are the external facing services.
-- Rules, which are the different Tazama evaluation containers.  Currently for our implementation, we deploy only Rule 901 and Rule 902, but this could easily be extended for all other available rule containers.
+This chart supports **flexible infrastructure deployment**:
 
-There are other component groups which may be part of a production deployment but which we have skipped over for our Helm charts.
-- Authentication and Security, consisting the the Tazama Auth Service and Keycloak.
-- Relays, which provide relay services for some Tazama core services.
-- Logging, which provide the logging and monitoring facilities.
-- Utilities, which are small conveniences for examining the internal state of Tazama.
+1. **Internal Mode** (default): All infrastructure (PostgreSQL, Valkey/Redis, NATS) deployed in-cluster
+2. **External Mode**: Connect to managed services (AWS RDS, ElastiCache, cloud NATS)
+3. **Hybrid Mode**: Mix internal and external services as needed
 
+### Design Principles
 
-### Diagram
-Here is a diagram representing the system architecture and component dependencies based on the Docker Compose configurations. It is rendered using Mermaid.js syntax, which maps out how the services connect to the core infrastructure databases and message queues.
+- **Backward Compatible**: Default values preserve existing behavior
+- **Mutual Exclusion**: Internal and external modes for each component are mutually exclusive (validated at install)
+- **Credential Hygiene**: No secrets in values.yaml - reference Kubernetes Secrets
+- **Production Ready**: TLS enforcement, credential validation, helpful error messages
 
-```mermaid
-graph TD
-    %% Base Infrastructure
-    subgraph Infrastructure
-        PG[(PostgreSQL)]
-        VK[(Valkey)]
-        MQ[[NATS]]
-    end
+---
 
-    %% Auth & Security (NEW)
-    subgraph Auth & Security
-        KC[Keycloak]
-        AUTH[Auth Service]
-    end
+## Infrastructure Options
 
-    %% Core Hub Services
-    subgraph Core Services
-        ADMIN[Admin Service]
-        TMS[TMS API]
-        ED[Event Director]
-        TP[Typology Processor]
-        TADP[Transaction Aggregation & Decisioning Processor]
-        EF[Event Flow Rule Processor]
-    end
+### PostgreSQL (Database)
 
-    %% Rule Processors
-    subgraph Rules
-        R901[Rule-901]
-        R902[Rule-902]
-    end
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `infrastructure.postgres.enabled` | `true` | Deploy internal PostgreSQL |
+| `infrastructure.postgres.external.enabled` | `false` | Use external PostgreSQL |
+| `infrastructure.postgres.external.host` | `""` | External PostgreSQL host (required if external enabled) |
+| `infrastructure.postgres.external.port` | `5432` | External PostgreSQL port |
+| `infrastructure.postgres.external.database` | `tazama` | Database name |
+| `infrastructure.postgres.external.secretRef.name` | `""` | Secret containing `user`, `password` |
+| `infrastructure.postgres.external.ssl.enabled` | `true` | Enable TLS |
+| `infrastructure.postgres.external.ssl.skipVerify` | `false` | Skip certificate verification (dev only) |
 
-    %% Relays
-    subgraph Relays
-        RSEF[Relay Service EF]
-        RSTP[Relay Service TP]
-        RSTADP[Relay Service TADP]
-    end
+### Valkey / Redis (Cache)
 
-    %% Logging
-    subgraph Logging
-        ES[Event Sidecar]
-        LJ[Lumberjack]
-    end
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `infrastructure.valkey.enabled` | `true` | Deploy internal Valkey |
+| `infrastructure.valkey.external.enabled` | `false` | Use external Valkey/Redis |
+| `infrastructure.valkey.external.host` | `""` | External host (required if external enabled) |
+| `infrastructure.valkey.external.port` | `6379` | External port |
+| `infrastructure.valkey.external.secretRef.name` | `""` | Secret containing `password` |
+| `infrastructure.valkey.external.cluster.enabled` | `false` | Enable cluster mode |
+| `infrastructure.valkey.external.ssl.enabled` | `true` | Enable TLS |
 
-    %% Utilities
-    subgraph Utilities
-        HASURA[Hasura GraphQL]
-        H_INIT[Hasura Init]
-        PGADMIN[pgAdmin 4]
-        NATSUTIL[NATS Utilities]
-    end
+### NATS (Message Broker)
 
-    %% --- Connections ---
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `infrastructure.nats.enabled` | `true` | Deploy internal NATS |
+| `infrastructure.nats.jetStream.enabled` | `true` | Enable JetStream persistence |
+| `infrastructure.nats.jetStream.storageSize` | `5Gi` | PVC size for JetStream |
+| `infrastructure.nats.jetStream.maxMemory` | `512Mi` | Max memory for stream storage |
+| `infrastructure.nats.jetStream.maxStore` | `2Gi` | Max disk storage for streams |
+| `infrastructure.nats.external.enabled` | `false` | Use external NATS |
+| `infrastructure.nats.external.host` | `""` | Single external host |
+| `infrastructure.nats.external.port` | `4222` | External port |
+| `infrastructure.nats.external.cluster.enabled` | `false` | Enable cluster mode |
+| `infrastructure.nats.external.cluster.urls` | `[]` | List of cluster URLs |
+| `infrastructure.nats.external.secretRef.name` | `""` | Secret containing credentials |
 
-    %% Auth Connections
-    AUTH --> KC
-    ADMIN -.->|Token Verification via Cert| AUTH
-    TMS -.->|Token Verification via Cert| AUTH
+---
 
-    %% Core to Infrastructure Dependencies
-    ADMIN --> PG
-    ADMIN --> VK
+## Installation
+
+### Prerequisites
+
+- Kubernetes 1.19+
+- Helm 3.8+
+- `kubectl` configured to access your cluster
+
+### Step 1: Prepare Secrets (External Mode Only)
+
+If using external infrastructure, create Kubernetes secrets:
+
+```bash
+# PostgreSQL credentials
+kubectl create secret generic rds-credentials \
+  --from-literal=user=tazama_admin \
+  --from-literal-password=<secure-password>
+
+# Valkey/Redis credentials
+kubectl create secret generic elasticache-credentials \
+  --from-literal=password=<redis-password>
+
+# NATS credentials
+kubectl create secret generic nats-credentials \
+  --from-literal=user=tazama \
+  --from-literal=password=<nats-password>
+```
+
+### Step 2: Create values File
+
+Create a `values-production.yaml` file with your configuration:
+
+```yaml
+# Example: External PostgreSQL + NATS, Internal Valkey
+infrastructure:
+  postgres:
+    enabled: false
+    external:
+      enabled: true
+      host: mydb.xxxx.rds.amazonaws.com
+      port: 5432
+      database: tazama
+      secretRef:
+        name: rds-credentials
+      ssl:
+        enabled: true
+        skipVerify: false
+
+  valkey:
+    enabled: true  # Use internal
+
+  nats:
+    enabled: false
+    external:
+      enabled: true
+      cluster:
+        enabled: true
+        urls:
+          - "nats://nats-1.region.cloud.nats.io:4222"
+          - "nats://nats-2.region.cloud.nats.io:4222"
+          - "nats://nats-3.region.cloud.nats.io:4222"
+      secretRef:
+        name: nats-credentials
+```
+
+### Step 3: Install the Chart
+
+```bash
+# Dry-run to validate configuration
+helm install tazama ./tazama-helm-derived \
+  -n tazama --create-namespace \
+  -f values-production.yaml \
+  --dry-run --debug
+
+# Install
+helm install tazama ./tazama-helm-derived \
+  -n tazama --create-namespace \
+  -f values-production.yaml
+```
+
+### Step 4: Verify Installation
+
+```bash
+# Check pods
+kubectl get pods -n tazama
+
+# Check config map
+kubectl get configmap tazama-core-config -n tazama -o yaml
+
+# Verify NATS JetStream (internal mode)
+kubectl logs -n tazama statefulset/nats | grep -i jetstream
+
+# Or for external NATS, verify connection
+kubectl logs -n tazama deployment/tms | grep -i nats
+```
+
+---
+
+## Configuration Reference
+
+### Global Settings
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `global.storageClass` | `""` | Storage class for PVCs |
+| `global.imagePullSecrets` | `[]` | Image pull secrets |
+| `validation.enabled` | `true` | Enable pre-install validation |
+| `validationWarningsSuppressed` | `false` | Suppress info-level warnings |
+
+### Infrastructure Configuration
+
+Each infrastructure component follows this pattern:
+
+```yaml
+infrastructure:
+  <component>:
+    enabled: true              # Internal deployment
+    image: "<component>:tag"   # Image for internal deployment
+    resources:                 # Resource limits
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
     
-    TMS --> PG
-    TMS --> VK
-    TMS --> MQ
-    
-    ED --> PG
-    ED --> VK
-    ED --> MQ
-    
-    TP --> PG
-    TP --> VK
-    TP --> MQ
-    
-    TADP --> PG
-    TADP --> VK
-    TADP --> MQ
-    
-    EF --> PG
-    EF --> VK
-    EF --> MQ
-
-    %% Rules to Infrastructure
-    R901 --> PG
-    R901 --> VK
-    
-    R902 --> PG
-    R902 --> VK
-
-    %% Relays to Core Components
-    RSEF --> EF
-    RSTP --> TP
-    RSTADP --> TADP
-
-	%% Relay to NATS
-	RSEF --> MQ
-    RSTP --> MQ
-    RSTADP --> MQ
-
-    %% Logging Connections
-    ES --> MQ
-    LJ --> ES
-    LJ --> MQ
-
-    %% Utility Connections
-    HASURA --> PG
-    H_INIT --> HASURA
-    H_INIT --> PG
-    PGADMIN --> PG
-    NATSUTIL --> MQ
+    # External configuration (mutually exclusive with enabled=true)
+    external:
+      enabled: false           # Set true for external
+      host: ""                 # External host
+      port: <default_port>    # External port
+      secretRef:
+        name: ""               # Secret reference
+        keys:
+          user: "user"
+          password: "password"
+      ssl:
+        enabled: true
+        skipVerify: false      # WARNING: Dev only
 ```
 
+---
 
-### Component Connectivity Breakdown
+## Examples
 
-* **Infrastructure**: Postgres, Valkey, and NATS form the core; backend processors (`ed`, `tp`, `tadp`, `ef`) connect to all three, while `admin-service`, `rule-901`, and `rule-902` connect only to Postgres and Valkey.
-* **Auth & Security**: Keycloak serves as the identity provider; `auth` interfaces with it. `admin-service` and `tms` enforce authentication (`AUTHENTICATED=true`) via a public key certificate.
-* **Relays**: `rsef`, `rstp`, and `rstadp` connect to `ef`, `tp`, and `tadp` respectively to process interdiction and alert streams, outputting them to NATS.
-* **Logging & Utilities**: `event-sidecar` and `lumberjack` handle NATS logging; `pgadmin`, `hasura`, and `nats-utilities` provide administrative and API interfaces.
+### Example 1: All Internal (Default)
 
-
-#### Connections to Base Infrastructure
-The system centers around three key infrastructure services: **PostgreSQL** (database), **Valkey** (in-memory store), and **NATS** (message broker).   These act as the central message queue and database infrastructure.
-
-*   **Postgres and Valkey only:** The `admin-service` API, `rule-901`, and `rule-902` require connections exclusively to the Postgres and Valkey databases. 
-*   **Postgres, Valkey, and NATS:** Almost all of the core processors—including `tms`, the Event Director (`ed`), the Typology Processor (`tp`), the Transaction Aggregation and Decisioning Processor (`tadp`), and the Event Flow Rule Processor (`ef`)—depend concurrently on all three infrastructure services.
-
-#### User-facing APIs (Core Services)
-* `admin-service`: Connects to Postgres and Valkey. Enforces authentication (`AUTHENTICATED=true`) via a mounted `test-public-key.pem` certificate, when used with Authentication Service and Keycloak.
-* `tms` (Transaction Monitoring Service): Connects to Postgres, Valkey, and NATS. Enforces authentication using the same public key certificate configuration.
-
-#### Backend Processors (Core Services)
-* `ed`, `tp`, `tadp`, and `ef` run concurrently against Postgres, Valkey, and NATS. They do not expose external endpoints and are unaffected by the auth layer.
-
-#### Rules 
- `rule-901` and `rule-902` require connections exclusively to Postgres and Valkey.
-
-#### Auth & Security Layer
-* **Keycloak (`keycloak`)**: Core identity provider initializing a test realm via a mounted JSON file. Exposes port 8080.
-* **Auth Service (`auth`)**: Connects directly to Keycloak as the authentication provider interface using `AUTH_URL=http://keycloak:8080`.
-
-For now we treat the Authentication & Security Layer as optional.  However, when enabled,  the Admin Service and Transaction Monitoring Service API must be modified by the base auth configuration. They should set an  `AUTHENTICATED=true` and mount a `test-public-key.pem` 
-
-#### Relays and Interdiction Pipelines
-Relay services act as integration bridges, consuming specific streams from data processors and outputting them to new NATS streams:
-
-* `rsef`: Connects to `ef` to consume the `interdiction-service-ef` stream.
-* `rstp`: Connects to `tp` to consume the `interdiction-service-tp` stream.
-* `rstadp`: Connects to `tadp` to consume the `investigation-service` stream for transaction alerts.
-
-#### Logging, Observability, and Utilities
-
-* **Logging**: `event-sidecar` listens to NATS on the `Lumberjack` subject. The `lumberjack` service depends on both the `event-sidecar` and `nats` to capture system events.
-* **Database Utilities**: `pgadmin` provides an administrative console for Postgres. `hasura` acts as a GraphQL engine over Postgres, relying on a `hasura-init` script that requires both services to be healthy before executing.
-* **Messaging Utilities**: `nats-utilities` connects directly to the NATS service for management.
-
-
-## Tazama Helm Chart Structure
-
-```
-tazama/
-├── Chart.yaml                      # Chart metadata and dependencies
-├── values.yaml                     # Global and environment-specific toggles
-└── templates/
-    ├── _helpers.tpl                # Reusable naming and labeling macros
-    ├── secrets.yaml                # Database and third-party credentials
-    ├── configmaps/                 # Consolidated app settings (.env mappings)
-    ├── infrastructure/             # Postgres, Valkey, NATS
-    │   ├── postgres.yaml
-    │   ├── valkey.yaml
-    │   └── nats.yaml
-    ├── core/                       # Admin, TMS, Processors, and NATS Relays
-    │   ├── admin-service.yaml
-    │   ├── tms.yaml
-    │   └── processors.yaml (ed, tp, tadp, ef)
-    └── rules/                      # Rule-901 and Rule-902 execution pods
-        └── rules.yaml (rule-901, rule-902)
+```bash
+helm install tazama ./tazama-helm-derived
 ```
 
-## Using the Helm chart
-Prerequisites are a running Kubernetes cluster, with kubectl and helm installed on a client machine.
+Result:
+- PostgreSQL StatefulSet with PVC
+- Valkey Deployment
+- NATS StatefulSet with JetStream persistence
+- Services: `postgres:5432`, `valkey:6379`, `nats:4222`
 
-To check the Helm chart
-```
-helm lint ./tazama-helm-dom
-```
+---
 
-To deploy the Helm chart, assuming the app is not yet running on Kubernetes
-```
-helm upgrade --install tazama ./tazama-helm-dom -n dom-tazama --create-namespace
-```
+### Example 2: External PostgreSQL (AWS RDS)
 
-To remove the Helm chart
-```
-# 1. Clear out the current installation
-helm uninstall tazama -n dom-tazama
+```bash
+kubectl create secret generic rds-credentials \
+  --from-literal=user=tazama \
+  --from-literal=password=mysecurepassword123
 
-# 2. Delete the PVC so it doesn't try to pin back to k8s-rancher01
-kubectl delete pvc postgres-data-postgres-0 -n dom-tazama
-```
-
-To render the Helm chart
-```
-helm template ./tazama-helm-dom
+helm install tazama ./tazama-helm-derived \
+  --set infrastructure.postgres.enabled=false \
+  --set infrastructure.postgres.external.enabled=true \
+  --set infrastructure.postgres.external.host=mydb.xxxx.rds.amazonaws.com \
+  --set infrastructure.postgres.external.secretRef.name=rds-credentials
 ```
 
+---
+
+### Example 3: External NATS Cluster (Cloud NATS)
+
+```bash
+kubectl create secret generic nats-creds \
+  --from-literal=user=tazama_user \
+  --from-literal=password=myNatsPassword
+
+helm install tazama ./tazama-helm-derived \
+  --set infrastructure.nats.enabled=false \
+  --set infrastructure.nats.external.enabled=true \
+  --set infrastructure.nats.external.cluster.enabled=true \
+  --set "infrastructure.nats.external.cluster.urls[0]=nats://nats-1.xxxx.nats.io:4222" \
+  --set "infrastructure.nats.external.cluster.urls[1]=nats://nats-2.xxxx.nats.io:4222" \
+  --set "infrastructure.nats.external.cluster.urls[2]=nats://nats-3.xxxx.nats.io:4222" \
+  --set infrastructure.nats.external.secretRef.name=nats-creds
+```
+
+---
+
+### Example 4: Hybrid - External DB + Internal Cache + NATS
+
+```yaml
+# values-hybrid.yaml
+infrastructure:
+  postgres:
+    enabled: false
+    external:
+      enabled: true
+      host: prod-db.cluster-xxx.rds.amazonaws.com
+      secretRef:
+        name: prod-rds-secret
+
+  valkey:
+    enabled: true
+    resources:
+      limits:
+        memory: "1Gi"
+
+  nats:
+    enabled: true
+    jetStream:
+      enabled: true
+      storageSize: "10Gi"
+      maxStore: "5Gi"
+```
+
+```bash
+helm install tazama ./tazama-helm-derived -f values-hybrid.yaml
+```
+
+---
+
+### Example 5: NATS Core Mode (No Persistence)
+
+For development/testing where message persistence is not required:
+
+```yaml
+infrastructure:
+  nats:
+    enabled: true
+    jetStream:
+      enabled: false  # NATS Core only
+```
+
+**Note**: NATS Core mode does NOT persist messages. Use JetStream for production.
+
+---
+
+## Troubleshooting
+
+### Common Errors
+
+#### Error: mutually exclusive
+
+```
+Error: UPGRADE FAILED: NATS configuration error (C2): 'enabled' and 'external.enabled' are mutually exclusive
+```
+
+**Fix**: Set only ONE of `enabled` OR `external.enabled` to `true`, not both:
+
+```yaml
+infrastructure:
+  nats:
+    enabled: false          # <-- Must be false
+    external:
+      enabled: true         # <-- Only this is true
+```
+
+---
+
+#### Error: required when external.enabled=true
+
+```
+Error: NATS external configuration error (C10): 'external.host' or 'external.cluster.urls' is required
+```
+
+**Fix**: Provide host OR cluster URLs:
+
+```yaml
+# Single host
+infrastructure:
+  nats:
+    external:
+      enabled: true
+      host: "nats.example.com"
+
+# OR cluster
+infrastructure:
+  nats:
+    external:
+      enabled: true
+      cluster:
+        enabled: true
+        urls:
+          - "nats://nats-1.example.com:4222"
+          - "nats://nats-2.example.com:4222"
+```
+
+---
+
+#### Error: secretRef.name is required
+
+```
+Error: NATS external configuration error (C10): 'external.secretRef.name' is required
+```
+
+**Fix**: Create a secret and reference it:
+
+```bash
+kubectl create secret generic nats-creds \
+  --from-literal=user=tazama \
+  --from-literal=password=securepassword
+```
+
+```yaml
+infrastructure:
+  nats:
+    external:
+      secretRef:
+        name: nats-creds
+```
+
+---
+
+### Verification Commands
+
+```bash
+# Check ConfigMap endpoints
+kubectl get configmap tazama-core-config -o yaml | grep -E "(HOST|PORT|URL)"
+
+# Verify NATS JetStream persistence
+kubectl exec -it statefulset/nats -- nats server info | grep -i jetstream
+
+# Check PVC for JetStream
+kubectl get pvc nats-jetstream-pvc
+
+# Test PostgreSQL connectivity
+kubectl run pg-test --rm -it --image=postgres:18 -- \
+  psql "postgres://user:pass@postgres:5432/tazama"
+
+# Test NATS connectivity
+kubectl run nats-test --rm -it --image=nats:2 -- \
+  nats server info -s nats://nats:4222
+```
+
+---
+
+## Upgrading
+
+### From Internal to External
+
+```bash
+# 1. Export current data (if needed)
+kubectl exec statefulset/postgres -- pg_dumpall > backup.sql
+
+# 2. Delete release
+helm uninstall tazama -n tazama
+
+# 3. Create external credentials secret
+kubectl create secret generic rds-credentials \
+  --from-literal=user=admin \
+  --from-literal=password=securepassword
+
+# 4. Install with external config
+helm install tazama ./tazama-helm-derived \
+  --set infrastructure.postgres.enabled=false \
+  --set infrastructure.postgres.external.enabled=true \
+  --set infrastructure.postgres.external.host=mydb.rds.amazonaws.com \
+  --set infrastructure.postgres.external.secretRef.name=rds-credentials
+
+# 5. Import data (if needed)
+# ... restore to external database
+```
+
+---
 
 ## Notes
-### To-Do's
-- This Helm chart only deploys the pods, however the Tazama configuration is still blank.
-- The deployed application does not have any ingress settings.
 
-### Debugging
-After starting the infrastructure services, the remaining issues had to do with configurations and environment
-variables pertaining to the core services.  Several cycles of editing and running the core service containers
-narrowed down the necessary values.
+### Security Considerations
 
-Additionally, there were issues with node affinity: some services would run on the control plane nodes, resulting
-in unavailable resources.  We resolved this by adding node affinity settings to the spec files.  This may be 
-primarily an issue with the Kubernetes cluster we are testing, so affinity sections are clearly marked for
-easy removal should some streamlining be done in the future
+1. **TLS is enabled by default** for all external connections
+2. **Never** set `ssl.skipVerify=true` in production
+3. Store all credentials in Kubernetes Secrets, never in values.yaml
+4. Review warnings during `helm install` - they indicate security risks
 
-What Was Accomplished:
-- Eradicated the Storage Race Condition: The upgraded health check perfectly synchronized the heavy 00-CREATE.sql catalog, ensuring the relational tables (pacs, pain, etc.) were completely built before any microservice attempted a database call.
+### NATS JetStream vs Core
 
-- Synchronized the Stream Matrix: Every application layer successfully received its missing environment variables (REDIS_IS_CLUSTER, ALERT_DESTINATION, etc.), allowing the strict @tazama-lf/frms-coe-lib library to validate its routes and boot up without panicking.
+| Feature | JetStream (enabled=true) | Core (enabled=false) |
+|---------|--------------------------|----------------------|
+| Message Persistence | ✅ PVC-backed | ❌ Memory only |
+| Replay | ✅ Supported | ❌ Not available |
+| Durability | ✅ Survives restarts | ❌ Lost on restart |
+| Guarantees | ✅ At-least-once | ❌ Best-effort |
+| Production | ✅ Recommended | ❌ Dev-only |
 
-- Optimized Node Architecture: Implementing master node exclusion steering kept the database off of the control plane node (k8s-rancher01), protecting etcd and permanently resolving the infrastructure API proxy errors.
+---
 
-- Silenced Telemetry Noise: Turning off the default Elastic APM tracking silenced the constant lookup error spam, giving clean, production-ready system logging.
+## License
 
-
-
-
+[License information here]

@@ -1,9 +1,28 @@
+{{- /*
+  nats.yaml - NATS JetStream Deployment and Service
+  Conditional rendering based on infrastructure.nats.enabled
+  
+  C1, C3: Only rendered when internal nats is enabled
+  When external: user connects to external NATS cluster
+  
+  Features:
+  - JetStream persistence (PVC-backed)
+  - Configurable memory/store limits
+  - Health checks
+*/ -}}
+{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "nats" "context" $) }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: nats
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
+    {{- include "tazama.labels" $ | nindent 4 }}
 spec:
+  serviceName: nats
   replicas: 1
   selector:
     matchLabels:
@@ -12,11 +31,28 @@ spec:
     metadata:
       labels:
         app: nats
+        app.kubernetes.io/name: nats
+        app.kubernetes.io/component: messaging
     spec:
       containers:
         - name: nats
-          image: "{{ .Values.infrastructure.nats.image }}"
-          args: ["-DVV"]
+          image: {{ .Values.infrastructure.nats.image | default "nats:2.10" | quote }}
+          args:
+            {{- if .Values.infrastructure.nats.jetStream.enabled }}
+            # JetStream enabled - message persistence
+            - "--jetstream"
+            - "--store_dir=/data"
+            {{- if .Values.infrastructure.nats.jetStream.maxMemory }}
+            - "--max_memory={{ .Values.infrastructure.nats.jetStream.maxMemory }}"
+            {{- end }}
+            {{- if .Values.infrastructure.nats.jetStream.maxStore }}
+            - "--max_store={{ .Values.infrastructure.nats.jetStream.maxStore }}"
+            {{- end }}
+            {{- else }}
+            # NATS Core only (no persistence)
+            {{- end }}
+            # Debug flags
+            - "-DVV"
           ports:
             - containerPort: 4222
               name: client
@@ -24,12 +60,64 @@ spec:
               name: cluster
             - containerPort: 8222
               name: monitor
+          volumeMounts:
+            {{- if .Values.infrastructure.nats.jetStream.enabled }}
+            - name: jetstream-storage
+              mountPath: /data
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- if .Values.infrastructure.nats.resources }}
+          resources:
+            {{- toYaml .Values.infrastructure.nats.resources | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- if .Values.infrastructure.nats.jetStream.enabled }}
+        - name: jetstream-storage
+          persistentVolumeClaim:
+            claimName: nats-jetstream-pvc
+        {{- end }}
 ---
+{{- if .Values.infrastructure.nats.jetStream.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nats-jetstream-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.infrastructure.nats.jetStream.storageSize | default "5Gi" }}
+---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:
   name: nats
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
 spec:
   ports:
     - name: client
@@ -43,3 +131,4 @@ spec:
       targetPort: 8222
   selector:
     app: nats
+{{- end }}

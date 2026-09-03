@@ -1,3 +1,9 @@
+{{/*
+Postgres infrastructure component.
+This template is conditionally included when internal Postgres is enabled
+via the tazama.infrastructure.internal.enabled helper function.
+*/}}
+{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "postgres" "context" $) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -310,3 +316,4 @@ spec:
       targetPort: 5432
   selector:
     app: postgres
+{{- end }}
