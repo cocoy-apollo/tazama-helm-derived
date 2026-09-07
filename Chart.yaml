@@ -21,5 +21,8 @@ keywords:
   - cloud-native
 
 maintainers:
-  - name: Dom Cimafranca
+  - name: Cocoy Jurado (This fork)
+    email: angelico@apollo.com.ph
+  - name: Dom Cimafranca (Source Repo)
     email: domu@cimafranca.com
+    
