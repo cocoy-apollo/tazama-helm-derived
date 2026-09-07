@@ -3,10 +3,10 @@ entries:
   tazama:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2026-09-07T12:04:58.5553851+08:00"
+    created: "2026-09-07T19:00:15.8456881+08:00"
     description: A unified Helm chart for deploying the Tazama Open-Source Transaction
       Monitoring, Core Services, and Rules engine stack on Kubernetes.
-    digest: f5e2dd334142fb4206f98c88215fba3674142dcf76dd1ddd60b6c6802c77ce2b
+    digest: 709837e4a1e3e9948d10144bbc660c77e0044db4af50489146a42c86e1be3d91
     keywords:
     - tazama
     - transaction-monitoring
@@ -19,6 +19,6 @@ entries:
     name: tazama
     type: application
     urls:
-    - https://tazama-project.github.io/tazama-helm-derived/tazama-1.0.0.tgz
+    - tazama-1.0.0.tgz
     version: 1.0.0
-generated: "2026-09-07T12:04:58.5500697+08:00"
+generated: "2026-09-07T19:00:15.8386437+08:00"
