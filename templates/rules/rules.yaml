@@ -1,11 +1,34 @@
-{{- range $rule := list "rule-901" "rule-902" }}
+{{/*
+  Tazama Rule Deployments
+  
+  Currently available rules in tazama-lf:
+  - rule-901: Amount of transactions debtor made
+  - rule-902: Number of transactions creditor received
+  
+  Additional rules can be added by extending the list below and adding
+  corresponding environment variable blocks.
+*/}}
+
+{{- $rules := list "rule-901" "rule-902" }}
+
+{{- /* Allow user to add custom rules via values */}}
+{{- if .Values.rules.additional }}
+{{- $rules = concat $rules .Values.rules.additional }}
+{{- end }}
+
+{{- range $rule := $rules }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $rule }}
   namespace: {{ $.Release.Namespace }}
+  labels:
+    app: {{ $rule }}
+    app.kubernetes.io/name: {{ $rule }}
+    app.kubernetes.io/part-of: tazama
+    app.kubernetes.io/component: rule
 spec:
-  replicas: 1
+  replicas: {{ $.Values.rules.replicas | default 1 }}
   selector:
     matchLabels:
       app: {{ $rule }}
@@ -13,7 +36,11 @@ spec:
     metadata:
       labels:
         app: {{ $rule }}
+        app.kubernetes.io/name: {{ $rule }}
+        app.kubernetes.io/part-of: tazama
+        app.kubernetes.io/component: rule
     spec:
+      {{- if $.Values.rules.waitForSchema | default true }}
       initContainers:
         - name: wait-db
           image: "postgres:16"
@@ -34,38 +61,82 @@ spec:
         - name: wait-valkey
           image: busybox:1.36
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
+      {{- end }}
       containers:
         - name: {{ $rule }}
           image: "{{ $.Values.global.imageRegistry }}/{{ $rule }}:{{ $.Values.global.tazamaVersion }}"
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
           env:
             - name: STARTUP_TYPE
-              value: "nats" 
+              value: "nats"
             - name: APM_SERVICE_NAME
               value: {{ $rule | quote }}
             - name: CONFIGURATION_DATABASE
-              value: "configuration" 
+              value: "configuration"
             - name: RAW_HISTORY_DATABASE
-              value: "raw_history" 
+              value: "raw_history"
             - name: EVENT_HISTORY_DATABASE
-              value: "event_history" 
+              value: "event_history"
             - name: RULE_VERSION
-              value: "1.0.0" 
+              value: {{ $.Values.rules.version | default "1.0.0" | quote }}
+            {{- /* Rule-specific environment variables */}}
             {{- if eq $rule "rule-901" }}
             - name: FUNCTION_NAME
-              value: "rule-901-rel-1-0-0" 
+              value: "rule-901-rel-1-0-0"
             - name: RULE_NAME
               value: "901"
             {{- end }}
             {{- if eq $rule "rule-902" }}
             - name: FUNCTION_NAME
-              value: "rule-902-rel-1-0-0" 
+              value: "rule-902-rel-1-0-0"
             - name: RULE_NAME
-              value: "902" 
+              value: "902"
+            {{- end }}
+            {{- if eq $rule "rule-903" }}
+            - name: FUNCTION_NAME
+              value: {{ $.Values.rules.rule903.functionName | default "rule-903-rel-1-0-0" | quote }}
+            - name: RULE_NAME
+              value: "903"
+            {{- end }}
+            {{- if eq $rule "rule-904" }}
+            - name: FUNCTION_NAME
+              value: {{ $.Values.rules.rule904.functionName | default "rule-904-rel-1-0-0" | quote }}
+            - name: RULE_NAME
+              value: "904"
+            {{- end }}
+            {{- /* Allow custom rules to be configured */}}
+            {{- if hasPrefix "rule-" $rule }}
+            {{- $ruleNum := trimPrefix "rule-" $rule }}
+            {{- if and (ne $ruleNum "901") (ne $ruleNum "902") (ne $ruleNum "903") (ne $ruleNum "904") }}
+            - name: FUNCTION_NAME
+              value: {{ printf "%s-rel-1-0-0" $rule | quote }}
+            - name: RULE_NAME
+              value: {{ $ruleNum | quote }}
+            {{- end }}
             {{- end }}
           envFrom:
             - secretRef:
                 name: tazama-shared-secrets
             - configMapRef:
                 name: tazama-core-config
+          resources:
+            {{- if $.Values.rules.resources }}
+            requests:
+              cpu: {{ $.Values.rules.resources.requests.cpu | default "100m" }}
+              memory: {{ $.Values.rules.resources.requests.memory | default "128Mi" }}
+            limits:
+              cpu: {{ $.Values.rules.resources.limits.cpu | default "500m" }}
+              memory: {{ $.Values.rules.resources.limits.memory | default "512Mi" }}
+            {{- else }}
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            {{- end }}
 ---
 {{- end }}

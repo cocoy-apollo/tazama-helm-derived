@@ -1,0 +1,239 @@
+{{/*
+  Tazama Configuration Seed Job
+
+  This Job seeds the configuration database with:
+  - NetworkMap: Maps messages to typologies and rules
+  - RuleConfig: Rule parameters, bands, thresholds
+  - TypologyConfig: Typology scoring formulas
+
+  The job runs once on first deploy and checks if configuration
+  already exists before seeding (idempotent).
+*/}}
+
+{{- if .Values.configSeed.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tazama-config-seed-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: tazama-config-seed
+    app.kubernetes.io/part-of: tazama
+data:
+  networkMap.json: |
+    {{ .Values.configSeed.networkMap | toJson }}
+  ruleConfigs.json: |
+    {{ .Values.configSeed.ruleConfigs | toJson }}
+  typologyConfigs.json: |
+    {{ .Values.configSeed.typologyConfigs | toJson }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tazama-config-seed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: tazama-config-seed
+    app.kubernetes.io/part-of: tazama
+    app.kubernetes.io/component: config-seed
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tazama-config-seed
+        app.kubernetes.io/part-of: tazama
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: configuration
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              until psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -c "SELECT 1" >/dev/null 2>&1; do
+                echo "PostgreSQL is unavailable - sleeping"
+                sleep 2
+              done
+              echo "PostgreSQL is up!"
+      containers:
+        - name: seed-config
+          image: node:18-alpine
+          workingDir: /seed
+          env:
+            - name: CONFIGURATION_DATABASE_HOST
+              value: postgres
+            - name: CONFIGURATION_DATABASE_PORT
+              value: "5432"
+            - name: CONFIGURATION_DATABASE_NAME
+              value: configuration
+            - name: CONFIGURATION_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_USER
+            - name: CONFIGURATION_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_PASSWORD
+            - name: SEED_VERSION
+              value: {{ .Values.configSeed.version | default "v1" | quote }}
+            - name: TENANT_ID
+              value: {{ .Values.configSeed.tenantId | default "default" | quote }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Installing database client..."
+              npm install pg --save-dev 2>/dev/null
+              
+              echo "Starting configuration seed..."
+              node /seed/seed-config.js
+              
+              echo "Configuration seed completed successfully!"
+          volumeMounts:
+            - name: config-data
+              mountPath: /seed/config
+            - name: seed-script
+              mountPath: /seed
+      volumes:
+        - name: config-data
+          configMap:
+            name: tazama-config-seed-data
+        - name: seed-script
+          configMap:
+            name: tazama-config-seed-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tazama-config-seed-script
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: tazama
+data:
+  seed-config.js: |
+    const { Client } = require('pg');
+    const fs = require('fs');
+    
+    const client = new Client({
+      host: process.env.CONFIGURATION_DATABASE_HOST,
+      port: parseInt(process.env.CONFIGURATION_DATABASE_PORT),
+      database: process.env.CONFIGURATION_DATABASE_NAME,
+      user: process.env.CONFIGURATION_DATABASE_USER,
+      password: process.env.CONFIGURATION_DATABASE_PASSWORD
+    });
+    
+    async function seedConfiguration() {
+      try {
+        await client.connect();
+        console.log('Connected to configuration database');
+    
+        const seedVersion = process.env.SEED_VERSION || 'v1';
+        const tenantId = process.env.TENANT_ID || 'default';
+    
+        // Check if already seeded
+        const existingMap = await client.query(
+          'SELECT COUNT(*) FROM networkmap WHERE cfg = $1 AND tenantid = $2',
+          [seedVersion, tenantId]
+        );
+    
+        if (parseInt(existingMap.rows[0].count) > 0) {
+          console.log(`Configuration already seeded (version: ${seedVersion}, tenant: ${tenantId})`);
+          return;
+        }
+    
+        // Load configuration files
+        const networkMap = JSON.parse(fs.readFileSync('/seed/config/networkMap.json', 'utf8'));
+        const ruleConfigs = JSON.parse(fs.readFileSync('/seed/config/ruleConfigs.json', 'utf8'));
+        const typologyConfigs = JSON.parse(fs.readFileSync('/seed/config/typologyConfigs.json', 'utf8'));
+    
+        // Insert NetworkMap
+        console.log('Inserting NetworkMap...');
+        await client.query(
+          `INSERT INTO networkmap (active, cfg, tenantid, messages, cretdtm, activeflg)
+           VALUES ($1, $2, $3, $4, NOW(), true)
+           ON CONFLICT (cfg, tenantid) DO NOTHING`,
+          [
+            networkMap.active,
+            networkMap.cfg,
+            networkMap.tenantId,
+            JSON.stringify(networkMap.messages)
+          ]
+        );
+    
+        // Insert RuleConfigs
+        console.log(`Inserting ${ruleConfigs.length} RuleConfigs...`);
+        for (const rc of ruleConfigs) {
+          await client.query(
+            `INSERT INTO ruleconfig (id, cfg, tenantid, config, desc, cretdtm, activeflg)
+             VALUES ($1, $2, $3, $4, $5, NOW(), true)
+             ON CONFLICT (id, cfg, tenantid) DO NOTHING`,
+            [
+              rc.id,
+              rc.cfg,
+              rc.tenantId,
+              JSON.stringify(rc.config),
+              rc.desc || null
+            ]
+          );
+        }
+    
+        // Insert TypologyConfigs
+        console.log(`Inserting ${typologyConfigs.length} TypologyConfigs...`);
+        for (const tc of typologyConfigs) {
+          await client.query(
+            `INSERT INTO typologyconfig (id, cfg, tenantid, config, desc, cretdtm, activeflg)
+             VALUES ($1, $2, $3, $4, $5, NOW(), true)
+             ON CONFLICT (id, cfg, tenantid) DO NOTHING`,
+            [
+              tc.id,
+              tc.cfg,
+              tc.tenantId,
+              JSON.stringify(tc.config),
+              tc.desc || null
+            ]
+          );
+        }
+    
+        console.log('Configuration seeded successfully!');
+        console.log(`  - NetworkMap: ${networkMap.cfg}`);
+        console.log(`  - RuleConfigs: ${ruleConfigs.length}`);
+        console.log(`  - TypologyConfigs: ${typologyConfigs.length}`);
+    
+      } catch (error) {
+        console.error('Error seeding configuration:', error);
+        process.exit(1);
+      } finally {
+        await client.end();
+      }
+    }
+    
+    seedConfiguration();
+{{- end }}
