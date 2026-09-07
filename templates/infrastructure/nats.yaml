@@ -8,6 +8,7 @@
   Features:
   - JetStream persistence (PVC-backed)
   - Configurable memory/store limits
+  - Configurable max connections and payload
   - Health checks
 */ -}}
 {{- if include "tazama.infrastructure.internal.enabled" (dict "component" "nats" "context" $) }}
@@ -50,6 +51,16 @@ spec:
             {{- end }}
             {{- else }}
             # NATS Core only (no persistence)
+            {{- end }}
+            {{- /* Connection limits */ -}}
+            {{- if .Values.infrastructure.nats.config.maxConnections }}
+            - "--max_connections={{ .Values.infrastructure.nats.config.maxConnections }}"
+            {{- end }}
+            {{- if .Values.infrastructure.nats.config.maxPayload }}
+            - "--max_payload={{ .Values.infrastructure.nats.config.maxPayload }}"
+            {{- end }}
+            {{- if .Values.infrastructure.nats.config.writeDeadline }}
+            - "--write_deadline={{ .Values.infrastructure.nats.config.writeDeadline }}"
             {{- end }}
             # Debug flags
             - "-DVV"

@@ -1,0 +1,117 @@
+---
+# Source: tazama/templates/infrastructure/nats.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nats-jetstream-pvc
+  namespace: default
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Source: tazama/templates/infrastructure/nats.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: default
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
+spec:
+  ports:
+    - name: client
+      port: 4222
+      targetPort: 4222
+    - name: cluster
+      port: 6222
+      targetPort: 6222
+    - name: monitor
+      port: 8222
+      targetPort: 8222
+  selector:
+    app: nats
+---
+# Source: tazama/templates/infrastructure/nats.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  namespace: default
+  labels:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: tazama
+    helm.sh/chart: tazama-1.0.0
+    app.kubernetes.io/name: tazama
+    app.kubernetes.io/instance: tazama
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: nats
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+        app.kubernetes.io/name: nats
+        app.kubernetes.io/component: messaging
+    spec:
+      containers:
+        - name: nats
+          image: "nats:2.10"
+          args:
+            # JetStream enabled - message persistence
+            - "--jetstream"
+            - "--store_dir=/data"
+            - "--max_memory=512Mi"
+            - "--max_store=2Gi"
+            - "--max_connections=64"
+            - "--max_payload=1MB"
+            - "--write_deadline=2s"
+            # Debug flags
+            - "-DVV"
+          ports:
+            - containerPort: 4222
+              name: client
+            - containerPort: 6222
+              name: cluster
+            - containerPort: 8222
+              name: monitor
+          volumeMounts:
+            - name: jetstream-storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: jetstream-storage
+          persistentVolumeClaim:
+            claimName: nats-jetstream-pvc

@@ -32,7 +32,7 @@ spec:
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
-          image: "postgres:16"
+          image: "{{ $.Values.infrastructure.postgres.image }}"
           env:
             - name: PGPASSWORD
               valueFrom:

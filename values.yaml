@@ -94,7 +94,7 @@ infrastructure:
     enabled: true  # Default: internal [C13]
     disabled: false
     
-    image: "valkey/valkey:7.2.5"
+    image: "valkey/valkey:8.0"
     
     resources:
       requests:
@@ -134,7 +134,7 @@ infrastructure:
   nats:
     enabled: true  # Default: internal [C13]
     
-    image: "nats:2"
+    image: "nats:2.10"
     
     # NATS JetStream Configuration (persistence)
     jetStream:
@@ -142,6 +142,12 @@ infrastructure:
       storageSize: "5Gi"      # PVC size for JetStream storage
       maxMemory: "512Mi"      # Max memory for JetStream stream storage (optional)
       maxStore: "2Gi"         # Max disk storage for JetStream streams (optional)
+    
+    # NATS Connection Configuration
+    config:
+      maxConnections: 64        # Maximum client connections
+      maxPayload: "1MB"         # Maximum message payload size
+      writeDeadline: "2s"      # Write timeout for client connections
     
     resources:
       requests:
@@ -199,6 +205,28 @@ core:
         cpu: "500m"
         memory: "512Mi"
   
+  typologyProcessor:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  transactionMonitor:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
   tms:
     port: 3000
     replicas: 1
@@ -211,81 +239,66 @@ core:
         memory: "512Mi"
 
 # ==============================================================================
-# USAGE EXAMPLES
+# CONFIGURATION SEEDING
 # ==============================================================================
-#
-# EXAMPLE 1: INTERNAL (default, current behavior)
-# -----------------------------------------------
-# helm install tazama ./tazama-helm-derived
-# 
-# Result:
-#   - PostgreSQL StatefulSet deployed in-cluster
-#   - Valkey Deployment deployed in-cluster
-#   - NATS Deployment deployed in-cluster
-#   - Services connect via: postgres:5432, valkey:6379, nats:4222
-#
-#
-# EXAMPLE 2: EXTERNAL MANAGED SERVICES (AWS RDS + ElastiCache)
-# ------------------------------------------------------------
-# # Pre-requisite: Create secrets
-# kubectl create secret generic rds-credentials \
-#   --from-literal=user=tazama_admin \
-#   --from-literal=password=<secure-password>
-#
-# kubectl create secret generic elasticache-credentials \
-#   --from-literal=password=<redis-password>
-#
-# helm install tazama ./tazama-helm-derived \
-#   --set infrastructure.postgres.enabled=false \
-#   --set infrastructure.postgres.external.enabled=true \
-#   --set infrastructure.postgres.external.host=mydb.xxxx.rds.amazonaws.com \
-#   --set infrastructure.postgres.external.secretRef.name=rds-credentials \
-#   --set infrastructure.valkey.enabled=false \
-#   --set infrastructure.valkey.external.enabled=true \
-#   --set infrastructure.valkey.external.host=mycache.xxxx.cache.amazonaws.com \
-#   --set infrastructure.valkey.external.secretRef.name=elasticache-credentials
-#
-# Result:
-#   - NO PostgreSQL StatefulSet [C1]
-#   - NO Valkey Deployment [C1]
-#   - NATS deployed internally
-#   - Services connect to AWS RDS and ElastiCache
-#
-#
-# EXAMPLE 3: HYBRID (External DB, Internal Cache)
-# -----------------------------------------------
-# helm install tazama ./tazama-helm-derived \
-#   --set infrastructure.postgres.enabled=false \
-#   --set infrastructure.postgres.external.enabled=true \
-#   --set infrastructure.postgres.external.host=mydb.xxxx.rds.amazonaws.com \
-#   --set infrastructure.postgres.external.secretRef.name=rds-credentials \
-#   --set infrastructure.valkey.enabled=true
-#
-# Result:
-#   - PostgreSQL: External (AWS RDS)
-#   - Valkey: Internal (in-cluster)
-#   - NATS: Internal (in-cluster)
-#
+# Configuration seeding populates the database with initial network maps,
+# rule configurations, and typology configurations.
+# ==============================================================================
+configSeed:
+  examples:
+    enabled: false  # Set to true to deploy example ConfigMap
+
+# ==============================================================================
+# RULES CONFIGURATION
+# ==============================================================================
+# rulesDefaults: Common settings applied to all rule deployments
+# rules: Individual rule configuration (override with values-internal.yaml)
 # ==============================================================================
 
+rulesDefaults:
+  replicas: 1
+  version: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  
+  # Wait for database schema and dependencies before starting rule
+  waitForSchema: true
+  
+  # Resource limits for all rules
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  # Node placement (optional)
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+# Individual rule configurations
+# Override this section with values-internal.yaml to enable specific rules
+# Format:
+#   rule-XXX:
+#     name: "Human readable name"
+#     description: "Rule description"
+#     enabled: true/false
+#     riskWeight: 0.X
+#     env: []  # Optional additional environment variables
+rules: {}
+
+# ==============================================================================
+# TYPOLOGIES CONFIGURATION
+# ==============================================================================
+# Typologies group rules together for evaluation
+# Override with values-internal.yaml
+# ==============================================================================
+typologies: {}
 
 # ==============================================================================
 # VALIDATION SETTINGS
 # ==============================================================================
-# Controls infrastructure validation behavior.
-#
-# validation.enabled -- Enable pre-install/pre-upgrade validation hooks
-#                        (default: true)
-#
-# validationWarningsSuppressed -- Suppress informational warnings about
-#                                  security implications while keeping errors
-#                                  (default: false)
-#
-# ==============================================================================
-
 validation:
   enabled: true
-
-# Set to true if you want to suppress SECURITY WARNING messages
-# Note: This does NOT suppress validation errors - only info-level warnings
-validationWarningsSuppressed: false
+  validationWarningsSuppressed: false

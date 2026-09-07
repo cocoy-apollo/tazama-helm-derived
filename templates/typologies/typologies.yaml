@@ -1,50 +1,62 @@
 {{/*
-  Tazama Rule Deployments
+  Tazama Typology Processor Deployments
   
-  Dynamically generates deployments for all enabled rules defined in values.yaml.
-  Rules are configured under .Values.rules with the following structure:
+  Dynamically generates deployments for all enabled typologies defined in values.yaml.
+  Typologies are groupings of rules that process results and produce alerts.
   
-  rules:
-    rule-XXX:
+  typologies:
+    <typology-id>:
       name: "Human readable name"
       description: "Description"
       enabled: true/false
-      riskWeight: 0.X
+      rules:
+        - rule-001
+        - rule-002
+        ...
+      alertThreshold: 0.X
       
-  Each rule deployment connects to:
-  - PostgreSQL (configuration, raw_history, event_history databases)
+  Each typology deployment connects to:
+  - PostgreSQL (configuration, raw_history, event_history, evaluation databases)
   - Valkey (Redis-compatible cache)
   - NATS (message bus)
+  
+  Typology processors:
+  - Subscribe to rule results from NATS
+  - Aggregate rule scores according to typology logic
+  - Produce alerts when thresholds are exceeded
+  - Route alerts to downstream systems
 */}}
 
-{{- range $ruleId, $ruleConfig := .Values.rules }}
-{{- if $ruleConfig.enabled }}
+{{- range $typologyId, $typologyConfig := .Values.typologies }}
+{{- if $typologyConfig.enabled }}
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $ruleId }}
+  name: {{ $typologyId }}-typology
   namespace: {{ $.Release.Namespace }}
   labels:
-    app: {{ $ruleId }}
-    app.kubernetes.io/name: {{ $ruleId }}
+    app: {{ $typologyId }}-typology
+    app.kubernetes.io/name: {{ $typologyId }}-typology
     app.kubernetes.io/part-of: tazama
-    app.kubernetes.io/component: rule
-    rule.tazama.io/name: {{ $ruleConfig.name | default $ruleId | quote }}
+    app.kubernetes.io/component: typology
+    typology.tazama.io/name: {{ $typologyConfig.name | default $typologyId | quote }}
+    typology.tazama.io/id: {{ $typologyId | quote }}
 spec:
   replicas: {{ $.Values.rulesDefaults.replicas | default 1 }}
   selector:
     matchLabels:
-      app: {{ $ruleId }}
+      app: {{ $typologyId }}-typology
   template:
     metadata:
       labels:
-        app: {{ $ruleId }}
-        app.kubernetes.io/name: {{ $ruleId }}
+        app: {{ $typologyId }}-typology
+        app.kubernetes.io/name: {{ $typologyId }}-typology
         app.kubernetes.io/part-of: tazama
-        app.kubernetes.io/component: rule
-        rule.tazama.io/name: {{ $ruleConfig.name | default $ruleId | quote }}
+        app.kubernetes.io/component: typology
+        typology.tazama.io/name: {{ $typologyConfig.name | default $typologyId | quote }}
+        typology.tazama.io/id: {{ $typologyId | quote }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3000"
@@ -66,11 +78,11 @@ spec:
             - sh
             - -c
             - |
-              until psql -h postgres -U postgres -d raw_history -c "SELECT 'pain013'::regclass;" >/dev/null 2>&1; do
-                echo "Waiting for the full Tazama database schema to finish initializing..."
+              until psql -h postgres -U postgres -d evaluation -c "SELECT 1;" >/dev/null 2>&1; do
+                echo "Waiting for database to be ready..."
                 sleep 2
               done
-              echo "Database schema ready"
+              echo "Database ready"
               
         {{- /* Wait for Valkey to be available */}}
         - name: wait-valkey
@@ -102,8 +114,8 @@ spec:
       {{- end }}
       
       containers:
-        - name: {{ $ruleId }}
-          image: "{{ $.Values.global.imageRegistry | default "ghcr.io/frmscoe" }}/{{ $ruleId }}:{{ $.Values.global.tazamaVersion | default "latest" }}"
+        - name: {{ $typologyId }}-typology
+          image: "{{ $.Values.global.imageRegistry | default "ghcr.io/frmscoe" }}/typology-processor:{{ $.Values.global.tazamaVersion | default "latest" }}"
           imagePullPolicy: {{ $.Values.rulesDefaults.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
@@ -135,7 +147,7 @@ spec:
               value: "nats"
               
             - name: APM_SERVICE_NAME
-              value: {{ $ruleId | quote }}
+              value: {{ printf "%s-typology" $typologyId | quote }}
               
             {{- /* Database configuration */}}
             - name: CONFIGURATION_DATABASE
@@ -144,6 +156,8 @@ spec:
               value: "raw_history"
             - name: EVENT_HISTORY_DATABASE
               value: "event_history"
+            - name: EVALUATION_DATABASE
+              value: "evaluation"
               
             {{- /* PostgreSQL connection settings */}}
             - name: CONFIGURATION_DATABASE_HOST
@@ -158,6 +172,10 @@ spec:
               value: "postgres"
             - name: EVENT_HISTORY_DATABASE_PORT
               value: "5432"
+            - name: EVALUATION_DATABASE_HOST
+              value: "postgres"
+            - name: EVALUATION_DATABASE_PORT
+              value: "5432"
             
             {{- /* Valkey/Redis configuration */}}
             - name: REDIS_SERVERS
@@ -165,32 +183,32 @@ spec:
             - name: REDIS_CLUSTER
               value: "false"
             
-            {{- /* NATS configuration */}}
+            {{- /* NATS configuration - subscribe to rule results */}}
             - name: NATS_SERVERS
               value: "nats://nats:4222"
             - name: NATS_CLUSTER_ID
               value: "tazama-cluster"
-            
-            {{- /* Rule-specific configuration */}}
+              
+            {{- /* Typology configuration */}}
+            - name: TYPOLOGY_NAME
+              value: {{ $typologyId | quote }}
+            - name: TYPOLOGY_ID
+              value: {{ $typologyId | quote }}
+            - name: TYPOLOGY_DISPLAY_NAME
+              value: {{ $typologyConfig.name | default $typologyId | quote }}
+            - name: TYPOLOGY_DESCRIPTION
+              value: {{ $typologyConfig.description | default "" | quote }}
+            - name: TYPOLOGY_RULES
+              value: {{ $typologyConfig.rules | toJson | quote }}
+            - name: ALERT_THRESHOLD
+              value: {{ $typologyConfig.alertThreshold | default 0.7 | quote }}
+              
+            {{- /* Processing configuration */}}
             - name: FUNCTION_NAME
-              value: {{ printf "%s-rel-1-0-0" $ruleId | quote }}
-            - name: RULE_NAME
-              value: {{ trimPrefix "rule-" $ruleId | quote }}
-            - name: RULE_VERSION
-              value: {{ $.Values.rulesDefaults.version | default "1.0.0" | quote }}
-              
-            {{- /* Risk weight from rule config */}}
-            - name: RISK_WEIGHT
-              value: {{ $ruleConfig.riskWeight | default 0.5 | quote }}
-              
-            {{- /* Rule metadata for observability */}}
-            - name: RULE_DISPLAY_NAME
-              value: {{ $ruleConfig.name | default $ruleId | quote }}
-            - name: RULE_DESCRIPTION
-              value: {{ $ruleConfig.description | default "" | quote }}
+              value: {{ printf "%s-typology-rel-1-0-0" $typologyId | quote }}
               
             {{- /* Additional environment variables from config */}}
-            {{- with $ruleConfig.env }}
+            {{- with $typologyConfig.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
             
@@ -235,14 +253,14 @@ spec:
 {{- end }}
 
 ---
-{{- /* Service definition for all rules - allows direct access to individual rules */}}
+{{- /* Service definition for all typologies */}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: tazama-rules
+  name: tazama-typologies
   namespace: {{ .Release.Namespace }}
   labels:
-    app: tazama-rules
+    app: tazama-typologies
     app.kubernetes.io/part-of: tazama
 spec:
   type: ClusterIP
@@ -252,4 +270,27 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app.kubernetes.io/component: rule
+    app.kubernetes.io/component: typology
+
+---
+{{- /* Main typology processor service - primary entry point for AML processing */}}
+{{- if .Values.typologies.main }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: tazama-aml-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tazama-aml-processor
+    app.kubernetes.io/part-of: tazama
+    app.kubernetes.io/component: main-typology
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: main-typology
+{{- end }}
