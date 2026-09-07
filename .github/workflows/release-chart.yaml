@@ -1,0 +1,42 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - 'chart-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Package chart
+        run: |
+          helm package . --destination ./charts/
+
+      - name: Update Helm repository index
+        run: |
+          helm repo index ./charts/ --url https://tazama-project.github.io/tazama-helm-derived/
+
+      - name: Commit and push chart release
+        run: |
+          git add charts/
+          git commit -m "Release Helm chart from tag ${{ github.ref_name }}" || echo "No changes to commit"
+          git push origin HEAD:main
