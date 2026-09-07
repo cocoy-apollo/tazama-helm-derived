@@ -1,0 +1,109 @@
+# APPENDED CONFIGURATION FOR RULES AND CONFIG SEED
+# This fragment will be appended to values.yaml
+# See the complete configuration in the values.yaml.new file
+
+rules:
+  replicas: 1
+  version: "1.0.0"
+  waitForSchema: true
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+configSeed:
+  enabled: false
+  version: "v1"
+  tenantId: "default"
+  networkMap:
+    active: true
+    cfg: "default-v1"
+    tenantId: "default"
+    messages:
+      - id: "pain.001.001.11"
+        cfg: "pain001-default-v1"
+        txTp: "pacs.008"
+        typologies:
+          - id: "typology-01"
+            cfg: "typology-01-v1"
+            rules:
+              - id: "rule-901"
+                cfg: "rule-901-v1"
+              - id: "rule-902"
+                cfg: "rule-902-v1"
+  ruleConfigs:
+    - id: "rule-901"
+      cfg: "rule-901-v1"
+      tenantId: "default"
+      desc: "Count of transactions debtor made"
+      config:
+        parameters:
+          maxQueryRange: 86400
+          minTransactions: 3
+        bands:
+          - lowerLimit: 0
+            upperLimit: 5
+            subRuleRef: ".x00"
+            reason: "Normal transaction volume"
+          - lowerLimit: 5
+            upperLimit: 10
+            subRuleRef: ".x01"
+            reason: "Elevated transaction volume"
+          - lowerLimit: 10
+            subRuleRef: ".x02"
+            reason: "High transaction volume"
+        exitConditions:
+          - subRuleRef: ".err"
+            reason: "Error processing transaction"
+    - id: "rule-902"
+      cfg: "rule-902-v1"
+      tenantId: "default"
+      desc: "Number of transactions creditor received"
+      config:
+        parameters:
+          maxQueryRange: 86400
+          minTransactions: 5
+        bands:
+          - lowerLimit: 0
+            upperLimit: 10
+            subRuleRef: ".x00"
+            reason: "Normal receiver volume"
+          - lowerLimit: 10
+            upperLimit: 20
+            subRuleRef: ".x01"
+            reason: "Elevated receiver volume"
+          - lowerLimit: 20
+            subRuleRef: ".x02"
+            reason: "High receiver volume"
+        exitConditions:
+          - subRuleRef: ".err"
+            reason: "Error processing transaction"
+  typologyConfigs:
+    - id: "typology-01"
+      cfg: "typology-01-v1"
+      tenantId: "default"
+      desc: "Transaction volume monitoring typology"
+      config:
+        expression: "({rule-901} * 0.6) + ({rule-902} * 0.4)"
+        threshold: 50
+        bands:
+          - lowerLimit: 0
+            upperLimit: 30
+            subRuleRef: ".x00"
+            reason: "Low risk - normal pattern"
+          - lowerLimit: 30
+            upperLimit: 50
+            subRuleRef: ".x01"
+            reason: "Medium risk - elevated pattern"
+          - lowerLimit: 50
+            upperLimit: 75
+            subRuleRef: ".x02"
+            reason: "High risk - suspicious pattern"
+          - lowerLimit: 75
+            subRuleRef: ".x03"
+            reason: "Critical risk - alert required"
+  examples:
+    enabled: false

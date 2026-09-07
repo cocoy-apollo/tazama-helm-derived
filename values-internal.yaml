@@ -1,0 +1,486 @@
+# Tazama Internal Values Configuration
+# Complete deployment configuration with internal infrastructure
+# Source: github.com/frmscoe rule repositories + internal Helm templates
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+
+global:
+  # Storage class for persistent volumes (empty = default)
+  storageClass: ""
+  
+  # Image pull policy for all containers
+  imagePullPolicy: IfNotPresent
+  
+  # Default namespace (override with --namespace)
+  namespace: tazama
+  
+  # Security context defaults
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+# =============================================================================
+# INFRASTRUCTURE CONFIGURATION - INTERNAL MODE
+# All infrastructure components configured for internal deployment
+# =============================================================================
+
+infrastructure:
+  # ============================================================================
+  # POSTGRES - Primary Database
+  # StatefulSet with persistent storage
+  # Databases: configuration, event_history, raw_history, evaluation
+  # ============================================================================
+  
+  postgres:
+    enabled: true
+    disabled: false
+    
+    image: "postgres:18"
+    
+    # Primary storage for all tazama databases
+    storageSize: "5Gi"
+    
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    
+    # Persistence settings
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      retentionPolicy: Retain
+    
+    # Database initialization (auto-created by ConfigMap)
+    databases:
+      - configuration
+      - event_history
+      - raw_history
+      - evaluation
+    
+    # Connection defaults (for internal services)
+    port: 5432
+    database: "tazama"
+    
+    # Postgres-specific settings
+    postgresql:
+      maxConnections: 100
+      sharedBuffers: "128MB"
+    
+    # Credentials reference (auto-created by Helm)
+    auth:
+      database: tazama
+      username: tazama
+      # Password generated in release secret
+    
+    # External mode disabled (internal only)
+    external:
+      enabled: false
+
+  # ============================================================================
+  # VALKEY - Redis-compatible Cache
+  # Deployment with optional persistence
+  # Used for: session storage, caching, temporary data
+  # ============================================================================
+  
+  valkey:
+    enabled: true
+    disabled: false
+    
+    image: "valkey/valkey:8.0"
+    
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+    
+    # Persistence for cache data (optional)
+    persistence:
+      enabled: false
+      storageSize: "1Gi"
+      storageClass: ""
+    
+    # Connection defaults
+    port: 6379
+    
+    # Valkey/Redis configuration
+    config:
+      maxmemory: "200mb"
+      maxmemory-policy: "allkeys-lru"
+      timeout: 0
+      tcp-keepalive: 300
+    
+    # External mode disabled (internal only)
+    external:
+      enabled: false
+
+  # ============================================================================
+  # NATS - Message Broker with JetStream
+  # StatefulSet with persistence for message durability
+  # Used for: event streaming, service communication
+  # ============================================================================
+  
+  nats:
+    enabled: true
+    disabled: false
+    
+    image: "nats:2.10"
+    
+    # JetStream configuration for message persistence
+    jetStream:
+      enabled: true
+      storageSize: "5Gi"
+      maxMemory: "512Mi"
+      maxStore: "2Gi"
+    
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    
+    # Persistence for JetStream
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+    
+    # NATS server ports
+    ports:
+      client: 4222
+      cluster: 6222
+      monitor: 8222
+    
+    # NATS server configuration
+    config:
+      maxConnections: 64
+      maxPayload: "1MB"
+      writeDeadline: "2s"
+    
+    # External mode disabled (internal only)
+    external:
+      enabled: false
+
+# =============================================================================
+# SERVICES CONFIGURATION
+# Core services that consume the infrastructure
+# =============================================================================
+
+services:
+  # Transaction Monitoring Service
+  transaction-monitor:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    
+    # Dependencies
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+  
+  # Rule Engine Service
+  rule-engine:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    
+    dependsOn:
+      - postgres
+      - nats
+  
+  # Typology Processor
+  typology-processor:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+# =============================================================================
+# RULES CONFIGURATION
+# All working rules from frmscoe organization (20 rules confirmed available)
+# =============================================================================
+
+rules:
+  # Account-based rules
+  rule-001:
+    name: "Derived account age - creditor"
+    description: "Analyzes the age of creditor accounts to identify potentially suspicious patterns related to account longevity"
+    enabled: true
+    riskWeight: 0.5
+  
+  rule-002:
+    name: "Transaction convergence - debtor"
+    description: "Detects patterns where transactions converge on a debtor account from multiple sources"
+    enabled: true
+    riskWeight: 0.6
+  
+  rule-003:
+    name: "Account dormancy - creditor"
+    description: "Identifies dormant creditor accounts that suddenly become active"
+    enabled: true
+    riskWeight: 0.4
+  
+  rule-004:
+    name: "Account dormancy - debtor"
+    description: "Identifies dormant debtor accounts that suddenly become active"
+    enabled: true
+    riskWeight: 0.4
+  
+  # Transaction similarity rules
+  rule-006:
+    name: "Outgoing transfer similarity - amounts"
+    description: "Detects patterns of similar transaction amounts in outgoing transfers"
+    enabled: true
+    riskWeight: 0.7
+  
+  rule-007:
+    name: "Outgoing transfer similarity - descriptions"
+    description: "Analyzes patterns in transaction descriptions for outgoing transfers"
+    enabled: true
+    riskWeight: 0.5
+  
+  rule-008:
+    name: "Outgoing transfer similarity - creditor"
+    description: "Identifies patterns of similar outgoing transfers to specific creditors"
+    enabled: true
+    riskWeight: 0.6
+  
+  # Activity pattern rules
+  rule-010:
+    name: "Increased account activity: volume - debtor"
+    description: "Detects unusual increases in transaction volume for debtor accounts"
+    enabled: true
+    riskWeight: 0.7
+  
+  rule-011:
+    name: "Increased account activity: volume - creditor"
+    description: "Detects unusual increases in transaction volume for creditor accounts"
+    enabled: true
+    riskWeight: 0.7
+  
+  # Convergence/divergence rules
+  rule-016:
+    name: "Transaction convergence - creditor"
+    description: "Identifies patterns where multiple transactions converge on a creditor account"
+    enabled: true
+    riskWeight: 0.6
+  
+  rule-017:
+    name: "Transaction divergence - debtor"
+    description: "Detects patterns where transactions diverge from a debtor account to multiple destinations"
+    enabled: true
+    riskWeight: 0.6
+  
+  # Large transaction rules
+  rule-018:
+    name: "Exceptionally large outgoing transfer - debtor"
+    description: "Flags outgoing transfers that are exceptionally large compared to historical patterns"
+    enabled: true
+    riskWeight: 0.8
+  
+  rule-020:
+    name: "Large transaction amount vs history - creditor"
+    description: "Compares transaction amounts to historical patterns for creditor accounts"
+    enabled: true
+    riskWeight: 0.6
+  
+  rule-021:
+    name: "A large number of similar transaction amounts - creditor"
+    description: "Detects patterns of structuring through similar transaction amounts"
+    enabled: true
+    riskWeight: 0.75
+  
+  # Mirroring rules
+  rule-024:
+    name: "Non-commissioned transaction mirroring - creditor"
+    description: "Identifies mirroring patterns in non-commissioned transactions for creditors"
+    enabled: true
+    riskWeight: 0.5
+  
+  rule-025:
+    name: "Non-commissioned transaction mirroring - debtor"
+    description: "Identifies mirroring patterns in non-commissioned transactions for debtors"
+    enabled: true
+    riskWeight: 0.5
+  
+  rule-026:
+    name: "Commissioned transaction mirroring - creditor"
+    description: "Identifies mirroring patterns in commissioned transactions for creditors"
+    enabled: true
+    riskWeight: 0.6
+  
+  rule-027:
+    name: "Commissioned transaction mirroring - debtor"
+    description: "Identifies mirroring patterns in commissioned transactions for debtors"
+    enabled: true
+    riskWeight: 0.6
+  
+  # Classification rules
+  rule-028:
+    name: "Age classification - debtor"
+    description: "Classifies debtor accounts based on age-related risk factors"
+    enabled: true
+    riskWeight: 0.3
+  
+  # Unfamiliar account rules
+  rule-030:
+    name: "Transfer to unfamiliar creditor account - debtor"
+    description: "Flags transfers to previously unseen creditor accounts"
+    enabled: true
+    riskWeight: 0.65
+
+# =============================================================================
+# TYPOLOGY CONFIGURATION
+# Main typology grouping all available rules
+# =============================================================================
+
+typologies:
+  main:
+    name: "Anti-Money Laundering Detection"
+    description: "Primary typology for AML transaction monitoring using all available detection rules"
+    enabled: true
+    rules:
+      - rule-001
+      - rule-002
+      - rule-003
+      - rule-004
+      - rule-006
+      - rule-007
+      - rule-008
+      - rule-010
+      - rule-011
+      - rule-016
+      - rule-017
+      - rule-018
+      - rule-020
+      - rule-021
+      - rule-024
+      - rule-025
+      - rule-026
+      - rule-027
+      - rule-028
+      - rule-030
+    alertThreshold: 0.7
+  
+  account-behavior:
+    name: "Account Behavior Analysis"
+    description: "Rules focused on account lifecycle and behavior patterns"
+    enabled: true
+    rules:
+      - rule-001
+      - rule-003
+      - rule-004
+      - rule-010
+      - rule-011
+      - rule-028
+    alertThreshold: 0.6
+  
+  transaction-patterns:
+    name: "Transaction Pattern Detection"
+    description: "Rules focused on transaction amount and frequency patterns"
+    enabled: true
+    rules:
+      - rule-006
+      - rule-007
+      - rule-008
+      - rule-018
+      - rule-020
+      - rule-021
+      - rule-030
+    alertThreshold: 0.65
+  
+  structuring-detection:
+    name: "Structuring Detection"
+    description: "Rules focused on detecting potential structuring behaviors"
+    enabled: true
+    rules:
+      - rule-002
+      - rule-016
+      - rule-017
+      - rule-024
+      - rule-025
+      - rule-026
+      - rule-027
+    alertThreshold: 0.7
+
+# =============================================================================
+# DEPLOYMENT SETTINGS
+# =============================================================================
+
+deployment:
+  # Development/internal deployment mode
+  environment: "internal"
+  
+  # Resource quotas for namespace
+  quotas:
+    enabled: false
+    cpu: "2"
+    memory: "4Gi"
+    pods: "10"
+  
+  # Autoscaling (disabled for internal)
+  autoscaling:
+    enabled: false
+
+# =============================================================================
+# MONITORING & OBSERVABILITY
+# =============================================================================
+
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: false
+  
+  # Health check endpoints
+  healthCheck:
+    enabled: true
+    path: "/health"
+    port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 30
+
+# =============================================================================
+# RULES NOT AVAILABLE (DOCUMENTATION)
+# The following rule numbers were not found in frmscoe organization (404):
+# - rule-005, rule-009, rule-012 through rule-015
+# - rule-019, rule-022, rule-023, rule-029
+# - rule-031 through rule-033
+# =============================================================================
