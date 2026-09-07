@@ -3,10 +3,10 @@ entries:
   tazama:
   - apiVersion: v2
     appVersion: 1.0.0
-    created: "2026-09-07T19:00:15.8456881+08:00"
+    created: "2026-09-07T20:09:59.436509+08:00"
     description: A unified Helm chart for deploying the Tazama Open-Source Transaction
       Monitoring, Core Services, and Rules engine stack on Kubernetes.
-    digest: 709837e4a1e3e9948d10144bbc660c77e0044db4af50489146a42c86e1be3d91
+    digest: ea00f4122befee8dfe6b66d5c42dc082d438e864465f6e0787a0d5754def9478
     keywords:
     - tazama
     - transaction-monitoring
@@ -14,11 +14,11 @@ entries:
     - financial-compliance
     - cloud-native
     maintainers:
-    - email: domu@cimafranca.com
-      name: Dom Cimafranca
+    - email: angelico@apollo.com.ph
+      name: Cocoy Jurado
     name: tazama
     type: application
     urls:
-    - tazama-1.0.0.tgz
+    - https://cocoy-apollo.github.io/tazama-helm-derived/tazama-1.0.0.tgz
     version: 1.0.0
-generated: "2026-09-07T19:00:15.8386437+08:00"
+generated: "2026-09-07T20:09:59.4296986+08:00"
