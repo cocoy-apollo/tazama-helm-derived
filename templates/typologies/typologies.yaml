@@ -41,7 +41,7 @@ metadata:
     app.kubernetes.io/part-of: tazama
     app.kubernetes.io/component: typology
 spec:
-  replicas: {{ $.Values.rulesDefaults.replicas | default 1 }}
+  replicas: {{ $.Values.typologyDefaults.replicas | default 1 }}
   selector:
     matchLabels:
       app: {{ $typologyId }}-typology
@@ -57,7 +57,7 @@ spec:
         prometheus.io/port: "3000"
         prometheus.io/path: "/metrics"
     spec:
-      {{- if $.Values.rulesDefaults.waitForSchema | default true }}
+      {{- if $.Values.typologyDefaults.waitForSchema | default true }}
       initContainers:
         {{- /* Wait for database schema to be fully initialized */}}
         - name: wait-db
@@ -111,7 +111,7 @@ spec:
       containers:
         - name: {{ $typologyId }}-typology
           image: "{{ $.Values.global.imageRegistry | default "ghcr.io/frmscoe" }}/typology-processor:{{ $.Values.global.tazamaVersion | default "latest" }}"
-          imagePullPolicy: {{ $.Values.rulesDefaults.imagePullPolicy | default "IfNotPresent" }}
+          imagePullPolicy: {{ $.Values.typologyDefaults.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
               containerPort: 3000
@@ -196,11 +196,11 @@ spec:
                 
           resources:
             requests:
-              cpu: {{ $.Values.rulesDefaults.resources.requests.cpu | default "100m" }}
-              memory: {{ $.Values.rulesDefaults.resources.requests.memory | default "512Mi" }}
+              cpu: {{ $.Values.typologyDefaults.resources.requests.cpu | default "100m" }}
+              memory: {{ $.Values.typologyDefaults.resources.requests.memory | default "2Gi" }}
             limits:
-              cpu: {{ $.Values.rulesDefaults.resources.limits.cpu | default "500m" }}
-              memory: {{ $.Values.rulesDefaults.resources.limits.memory | default "1Gi" }}
+              cpu: {{ $.Values.typologyDefaults.resources.limits.cpu | default "500m" }}
+              memory: {{ $.Values.typologyDefaults.resources.limits.memory | default "2Gi" }}
               
       {{- /* Security context */}}
       securityContext:
@@ -210,17 +210,17 @@ spec:
         fsGroup: 1000
         
       {{- /* Node affinity/ tolerations */}}
-      {{- with $.Values.rulesDefaults.nodeSelector }}
+      {{- with $.Values.typologyDefaults.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       
-      {{- with $.Values.rulesDefaults.affinity }}
+      {{- with $.Values.typologyDefaults.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       
-      {{- with $.Values.rulesDefaults.tolerations }}
+      {{- with $.Values.typologyDefaults.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

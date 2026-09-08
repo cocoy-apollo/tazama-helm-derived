@@ -285,6 +285,27 @@ services:
 # Resource limits and settings for all rules and typologies
 # =============================================================================
 
+
+# =============================================================================
+# =============================================================================
+# TYPOLOGY DEFAULTS
+# Resource limits and settings for typology pods (not rules)
+# =============================================================================
+
+typologyDefaults:
+  replicas: 1
+  waitForSchema: true
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "2Gi"
+    limits:
+      cpu: "500m"
+      memory: "2Gi"
+  logLevel: "info"
+  nodeEnv: "production"
+
 rulesDefaults:
   # Number of replicas for each rule/typology deployment
   replicas: 1
