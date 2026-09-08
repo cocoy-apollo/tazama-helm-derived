@@ -276,7 +276,7 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: {{ .Values.typologies.main }}-typology
+    app: main-typology
 {{- end }}
 
 ---
@@ -293,7 +293,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ .Values.typologies.main | default "typology-processor" }}-typology
+    name: main-typology
   minReplicas: {{ .Values.typologies.autoscaling.minReplicas | default 1 }}
   maxReplicas: {{ .Values.typologies.autoscaling.maxReplicas | default 5 }}
   metrics:
