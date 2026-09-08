@@ -119,8 +119,7 @@ spec:
               
           {{- /* Liveness and readiness probes */}}
           livenessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -128,8 +127,7 @@ spec:
             failureThreshold: 3
             
           readinessProbe:
-            httpGet:
-              path: /health/ready
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -278,7 +276,6 @@ metadata:
   labels:
     app: tazama-aml-processor
     app.kubernetes.io/part-of: tazama
-    app.kubernetes.io/component: main-typology
 spec:
   type: ClusterIP
   ports:
@@ -287,5 +284,31 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: main-typology
+    app: {{ .Values.typologies.main }}-typology
+{{- end }}
+
+---
+{{- /* HorizontalPodAutoscaler for typologies - allows dynamic scaling based on load */}}
+{{- if .Values.typologies.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tazama-typologies-hpa
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: tazama
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.typologies.main | default "typology-processor" }}-typology
+  minReplicas: {{ .Values.typologies.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.typologies.autoscaling.maxReplicas | default 5 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.typologies.autoscaling.targetCPUUtilizationPercentage | default 70 }}
 {{- end }}

@@ -110,8 +110,7 @@ spec:
               
           {{- /* Liveness and readiness probes */}}
           livenessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -119,8 +118,7 @@ spec:
             failureThreshold: 3
             
           readinessProbe:
-            httpGet:
-              path: /health/ready
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 5
