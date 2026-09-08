@@ -225,7 +225,7 @@ infrastructure:
 # =============================================================================
 
 services:
-  # Transaction Monitoring Service
+  # Transaction Monitoring Service (TMS)
   transaction-monitor:
     enabled: true
     replicas: 1
@@ -233,10 +233,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "512Mi"
+        memory: "3Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "3Gi"
 
     # Dependencies
     dependsOn:
@@ -261,7 +261,7 @@ services:
       - postgres
       - nats
 
-  # Typology Processor
+  # Typology Processor (TP)
   typology-processor:
     enabled: true
     replicas: 1
@@ -269,10 +269,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "512Mi"
+        memory: "3Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "3Gi"
 
     dependsOn:
       - postgres
@@ -307,6 +307,49 @@ rulesDefaults:
   # Logging configuration
   logLevel: "info"
   nodeEnv: "production"
+
+# =============================================================================
+# EVENT DEMONSTRATOR (ED) - Additional service
+# =============================================================================
+
+  # Event Demonstrator handles demo/test event processing
+  event-demonstrator:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+# =============================================================================
+# TRANSACTION AGGREGATION & DISPLAY PROCESSOR (TADP)
+# =============================================================================
+
+  tadp:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
 
 # RULES CONFIGURATION
 # All working rules from frmscoe organization (20 rules confirmed available)
