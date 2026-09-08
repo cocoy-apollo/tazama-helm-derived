@@ -302,10 +302,18 @@ spec:
               subPath: 00-CREATE.sql
             - name: postgres-data
               mountPath: /var/lib/postgresql
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-tmp
+              mountPath: /tmp
       volumes:
         - name: init-volume
           configMap:
             name: postgres-init-script
+        - name: postgres-run
+          emptyDir: {}
+        - name: postgres-tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
