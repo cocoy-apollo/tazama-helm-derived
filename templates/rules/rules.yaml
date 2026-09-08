@@ -108,21 +108,13 @@ spec:
               containerPort: 3000
               protocol: TCP
               
-          {{- /* Liveness and readiness probes */}}
+          {{- /* Liveness probe only - readiness probe disabled */}}
           livenessProbe:
             tcpSocket:
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
-            
-          readinessProbe:
-            tcpSocket:
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 3
             failureThreshold: 3
           
           env:
@@ -166,30 +158,13 @@ spec:
               value: "nats://nats:4222"
             - name: NATS_CLUSTER_ID
               value: "tazama-cluster"
-            
-            {{- /* Rule-specific configuration */}}
-            - name: FUNCTION_NAME
-              value: {{ printf "%s-rel-1-0-0" $ruleId | quote }}
-            - name: RULE_NAME
-              value: {{ trimPrefix "rule-" $ruleId | quote }}
-            - name: RULE_VERSION
-              value: {{ $.Values.rulesDefaults.version | default "1.0.0" | quote }}
               
-            {{- /* Risk weight from rule config */}}
-            - name: RISK_WEIGHT
-              value: {{ $ruleConfig.riskWeight | default 0.5 | quote }}
+            {{- /* Logging configuration */}}
+            - name: LOG_LEVEL
+              value: {{ $.Values.rulesDefaults.logLevel | default "info" | quote }}
+            - name: NODE_ENV
+              value: {{ $.Values.rulesDefaults.nodeEnv | default "production" | quote }}
               
-            {{- /* Rule metadata for observability */}}
-            - name: RULE_DISPLAY_NAME
-              value: {{ $ruleConfig.name | default $ruleId | quote }}
-            - name: RULE_DESCRIPTION
-              value: {{ $ruleConfig.description | default "" | quote }}
-              
-            {{- /* Additional environment variables from config */}}
-            {{- with $ruleConfig.env }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            
           envFrom:
             - secretRef:
                 name: tazama-shared-secrets
@@ -199,10 +174,10 @@ spec:
           resources:
             requests:
               cpu: {{ $.Values.rulesDefaults.resources.requests.cpu | default "100m" }}
-              memory: {{ $.Values.rulesDefaults.resources.requests.memory | default "128Mi" }}
+              memory: {{ $.Values.rulesDefaults.resources.requests.memory | default "512Mi" }}
             limits:
               cpu: {{ $.Values.rulesDefaults.resources.limits.cpu | default "500m" }}
-              memory: {{ $.Values.rulesDefaults.resources.limits.memory | default "512Mi" }}
+              memory: {{ $.Values.rulesDefaults.resources.limits.memory | default "1Gi" }}
               
       {{- /* Security context */}}
       securityContext:

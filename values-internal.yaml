@@ -280,6 +280,34 @@ services:
       - valkey
 
 # =============================================================================
+# =============================================================================
+# RULES DEFAULTS
+# Resource limits and settings for all rules and typologies
+# =============================================================================
+
+rulesDefaults:
+  # Number of replicas for each rule/typology deployment
+  replicas: 1
+  
+  # Wait for database schema to be initialized before starting
+  waitForSchema: true
+  
+  # Image pull policy
+  imagePullPolicy: IfNotPresent
+  
+  # Resource allocations (increased to prevent OOM kills)
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+  
+  # Logging configuration
+  logLevel: "info"
+  nodeEnv: "production"
+
 # RULES CONFIGURATION
 # All working rules from frmscoe organization (20 rules confirmed available)
 # =============================================================================
