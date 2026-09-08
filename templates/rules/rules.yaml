@@ -72,7 +72,7 @@ spec:
               
         {{- /* Wait for Valkey to be available */}}
         - name: wait-valkey
-          image: "{{ $.Values.global.imageRegistry | default "docker.io" }}/busybox:1.36"
+          image: "busybox:1.36"
           imagePullPolicy: IfNotPresent
           command:
             - sh
@@ -86,7 +86,7 @@ spec:
               
         {{- /* Wait for NATS to be available */}}
         - name: wait-nats
-          image: "{{ $.Values.global.imageRegistry | default "docker.io" }}/busybox:1.36"
+          image: "busybox:1.36"
           imagePullPolicy: IfNotPresent
           command:
             - sh
