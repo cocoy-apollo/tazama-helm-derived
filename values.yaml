@@ -17,7 +17,7 @@
 
 global:
   tazamaVersion: "rc"
-  imageRegistry: ""
+  imageRegistry: "tazamaorg"
   storageClass: "longhorn-single"
 
 # ==============================================================================
@@ -308,6 +308,7 @@ rulesDefaults:
 #     enabled: true/false
 #     riskWeight: 0.X
 #     env: []  # Optional additional environment variables
+
 rules: {}
 
 # ==============================================================================
