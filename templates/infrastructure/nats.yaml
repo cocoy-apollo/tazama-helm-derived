@@ -44,17 +44,6 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      {{- if .Values.infrastructure.nats.jetStream.enabled }}
-      initContainers:
-        - name: fix-permissions
-          image: {{ .Values.global.busybox.image | default "busybox:latest" | quote }}
-          command: ["sh", "-c", "chown -R 1000:1000 /data && chmod -R 755 /data"]
-          volumeMounts:
-            - name: jetstream-storage
-              mountPath: /data
-          securityContext:
-            runAsUser: 0
-      {{- end }}
       containers:
         - name: nats
           image: {{ .Values.infrastructure.nats.image | default "nats:2.10" | quote }}
