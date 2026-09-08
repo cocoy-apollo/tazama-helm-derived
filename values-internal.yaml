@@ -233,10 +233,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "2Gi"
+        memory: "512Mi"
       limits:
         cpu: "500m"
-        memory: "2Gi"
+        memory: "512Mi"
 
     # Dependencies
     dependsOn:
@@ -252,10 +252,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "2Gi"
+        memory: "512Mi"
       limits:
         cpu: "500m"
-        memory: "2Gi"
+        memory: "512Mi"
 
     dependsOn:
       - postgres
@@ -269,10 +269,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "2Gi"
+        memory: "512Mi"
       limits:
         cpu: "500m"
-        memory: "2Gi"
+        memory: "512Mi"
 
     dependsOn:
       - postgres
@@ -299,10 +299,10 @@ rulesDefaults:
   resources:
     requests:
       cpu: "100m"
-      memory: "2Gi"
+      memory: "512Mi"
     limits:
       cpu: "500m"
-      memory: "2Gi"
+      memory: "512Mi"
   
   # Logging configuration
   logLevel: "info"
@@ -561,3 +561,4 @@ monitoring:
 # - rule-019, rule-022, rule-023, rule-029
 # - rule-031 through rule-033
 # =============================================================================
+
