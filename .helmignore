@@ -1,0 +1,47 @@
+# Patterns to ignore when building the Helm chart package
+# This prevents unnecessary files from being included in the .tgz
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# Development and test files
+*.test.yaml
+test-*.yaml
+test_*.yaml
+*_test.yaml
+final_test.yaml
+
+# Output and rendered files
+output.yaml
+render-output.json
+rendered-templates/
+*.json.new
+*.yaml.new
+
+# Documentation (optional - uncomment if you want to exclude)
+# README.md
+# README*.md
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Values fragments (not for direct deployment)
+values-fragment.yaml

@@ -1,8 +1,23 @@
+---
+# Source: tazama/templates/core/admin-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-service
+  namespace: default
+spec:
+  ports:
+    - port: 3100
+      targetPort: 3100
+  selector:
+    app: admin-service
+---
+# Source: tazama/templates/core/admin-service.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: admin-service
-  namespace: {{ .Release.Namespace }}
+  namespace: default
 spec:
   replicas: 1
   selector:
@@ -31,7 +46,7 @@ spec:
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
-          image: "{{ .Values.infrastructure.postgres.image }}"
+          image: "postgres:18-alpine"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -67,11 +82,7 @@ spec:
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
       containers:
         - name: admin-service
-          {{- if .Values.global.imageRegistry }}
-          image: "{{ .Values.global.imageRegistry }}/admin-service:{{ .Values.global.tazamaVersion }}"
-          {{- else }}
-          image: "admin-service:{{ .Values.global.tazamaVersion }}"
-          {{- end }}
+          image: "docker.io/tazamaorg/admin-service:rc"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -100,15 +111,3 @@ spec:
                 name: tazama-core-config
           ports:
             - containerPort: 3100
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: admin-service
-  namespace: {{ .Release.Namespace }}
-spec:
-  ports:
-    - port: {{ .Values.core.adminService.port }}
-      targetPort: 3100
-  selector:
-    app: admin-service

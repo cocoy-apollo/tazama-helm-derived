@@ -935,7 +935,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1099,7 +1099,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1263,7 +1263,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1427,7 +1427,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1591,7 +1591,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1755,7 +1755,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -1919,7 +1919,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2083,7 +2083,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2247,7 +2247,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2411,7 +2411,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2575,7 +2575,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2739,7 +2739,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -2903,7 +2903,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3067,7 +3067,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3231,7 +3231,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3395,7 +3395,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3559,7 +3559,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3723,7 +3723,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -3887,7 +3887,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -4051,7 +4051,7 @@ spec:
     spec:
       initContainers:
         - name: wait-db
-          image: "docker.io/tazamaorg/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD
@@ -4286,7 +4286,7 @@ spec:
     # END OF AFFINITY BLOCK
       containers:
         - name: postgres
-          image: "postgres:18"
+          image: "postgres:18-alpine"
           env:
             - name: POSTGRES_USER
               valueFrom:

@@ -1,21 +1,37 @@
-{{- /*
-  valkey.yaml - Valkey (Redis-compatible) Deployment and Service
-  Conditional rendering based on infrastructure.valkey.enabled
-  
-  C1, C3: Only rendered when internal valkey is enabled
-  When external: user connects to external Redis/Valkey cluster
-*/ -}}
-{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "valkey" "context" $) }}
-apiVersion: apps/v1
-kind: Deployment
+---
+# Source: tazama/templates/infrastructure/valkey.yaml
+apiVersion: v1
+kind: Service
 metadata:
   name: valkey
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app.kubernetes.io/name: valkey
     app.kubernetes.io/component: cache
     app.kubernetes.io/part-of: tazama
-    {{- include "tazama.labels" $ | nindent 4 }}
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: valkeyport
+  selector:
+    app: valkey
+---
+# Source: tazama/templates/infrastructure/valkey.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey
+  namespace: default
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: tazama
+    helm.sh/chart: tazama-1.0.0
+    app.kubernetes.io/name: tazama
+    app.kubernetes.io/instance: test
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
   selector:
@@ -37,7 +53,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: valkey
-          image: {{ .Values.infrastructure.valkey.image | default "valkey/valkey:8.0" | quote }}
+          image: "valkey/valkey:8.0"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -61,25 +77,10 @@ spec:
               command: ["sh", "-c", "valkey-cli -p 6379 ping | grep PONG"]
             initialDelaySeconds: 3
             periodSeconds: 5
-          {{- if .Values.infrastructure.valkey.resources }}
           resources:
-            {{- toYaml .Values.infrastructure.valkey.resources | nindent 12 }}
-          {{- end }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: valkey
-  namespace: {{ .Release.Namespace }}
-  labels:
-    app.kubernetes.io/name: valkey
-    app.kubernetes.io/component: cache
-    app.kubernetes.io/part-of: tazama
-spec:
-  ports:
-    - port: 6379
-      targetPort: 6379
-      name: valkeyport
-  selector:
-    app: valkey
-{{- end }}
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi

@@ -25,8 +25,8 @@ data:
   # NATS Server URL
   SERVER_URL: {{ include "tazama.nats.url" $ | quote }}
   
-  # Valkey/Redis Configuration
-  REDIS_SERVERS: {{ include "tazama.valkey.serversJson" $ }}
+  # Valkey/Redis Configuration - quoted to prevent YAML parsing as array
+  REDIS_SERVERS: '{{ include "tazama.valkey.serversJson" $ }}'
   {{- if .Values.infrastructure.valkey.external.cluster }}
   REDIS_IS_CLUSTER: {{ .Values.infrastructure.valkey.external.cluster.enabled | default false | quote }}
   {{- else }}

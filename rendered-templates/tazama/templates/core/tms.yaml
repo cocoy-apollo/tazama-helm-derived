@@ -41,7 +41,7 @@ spec:
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
-          image: "postgres:18"
+          image: "postgres:18-alpine"
           env:
             - name: PGPASSWORD
               valueFrom:

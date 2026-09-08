@@ -17,7 +17,7 @@
 
 global:
   tazamaVersion: "rc"
-  imageRegistry: "docker.io/tazamaorg"
+  imageRegistry: ""
   storageClass: "longhorn-single"
 
 # ==============================================================================
@@ -35,7 +35,7 @@ infrastructure:
     enabled: true  # Default preserves backward compatibility
     disabled: false
     
-    image: "postgres:18"
+    image: "postgres:18-alpine"
     storageSize: "5Gi"
     
     # Internal resource configuration
@@ -196,6 +196,28 @@ infrastructure:
 core:
   adminService:
     port: 3100
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  eventDirector:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  eventFlow:
+    port: 3000
     replicas: 1
     resources:
       requests:

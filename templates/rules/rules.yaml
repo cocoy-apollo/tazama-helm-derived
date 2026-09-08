@@ -31,7 +31,6 @@ metadata:
     app.kubernetes.io/name: {{ $ruleId }}
     app.kubernetes.io/part-of: tazama
     app.kubernetes.io/component: rule
-    rule.tazama.io/name: {{ $ruleConfig.name | default $ruleId | quote }}
 spec:
   replicas: {{ $.Values.rulesDefaults.replicas | default 1 }}
   selector:
@@ -44,7 +43,6 @@ spec:
         app.kubernetes.io/name: {{ $ruleId }}
         app.kubernetes.io/part-of: tazama
         app.kubernetes.io/component: rule
-        rule.tazama.io/name: {{ $ruleConfig.name | default $ruleId | quote }}
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3000"
@@ -54,7 +52,7 @@ spec:
       initContainers:
         {{- /* Wait for database schema to be fully initialized */}}
         - name: wait-db
-          image: "{{ $.Values.global.imageRegistry | default "docker.io" }}/postgres:18"
+          image: "postgres:18-alpine"
           imagePullPolicy: IfNotPresent
           env:
             - name: PGPASSWORD

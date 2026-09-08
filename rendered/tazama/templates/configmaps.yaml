@@ -1,0 +1,51 @@
+---
+# Source: tazama/templates/configmaps.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tazama-core-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: tazama-core-config
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: tazama
+data:
+  NODE_ENV: "dev"
+  LOG_LEVEL: "info"
+  
+  # Telemetry / APM Suppression Flags
+  APM_ACTIVE: "false"
+  ELASTIC_APM_ACTIVE: "false"
+
+  # Infrastructure Network Coordinates - Dynamic Resolution
+  # NATS Server URL
+  SERVER_URL: "nats:4222"
+  
+  # Valkey/Redis Configuration - quoted to prevent YAML parsing as array
+  REDIS_SERVERS: '[{"host":"valkey","port":6379}]'
+  REDIS_IS_CLUSTER: "false"
+  
+  # Database Hosts - All schemas on same server
+  CONFIGURATION_DATABASE_HOST: postgres
+  EVENT_HISTORY_DATABASE_HOST: postgres
+  RAW_HISTORY_DATABASE_HOST: postgres
+  EVALUATION_DATABASE_HOST: postgres
+  
+  # Database Ports
+  CONFIGURATION_DATABASE_PORT: "5432"
+  EVENT_HISTORY_DATABASE_PORT: "5432"
+  RAW_HISTORY_DATABASE_PORT: "5432"
+  EVALUATION_DATABASE_PORT: "5432"
+
+  # Database Schema Names
+  CONFIGURATION_DATABASE: tazama
+  EVENT_HISTORY_DATABASE: tazama
+  RAW_HISTORY_DATABASE: tazama
+  EVALUATION_DATABASE: tazama
+
+  # NATS Core Stream Message Routing Matrix
+  INTERDICTION_PRODUCER: "interdiction"
+  INTERDICTION_DESTINATION: "interdiction"
+  ALERT_PRODUCER: "alert"
+  ALERT_DESTINATION: "alert"
+  SUPPRESS_ALERTS: "false"

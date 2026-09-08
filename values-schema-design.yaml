@@ -35,7 +35,7 @@ infrastructure:
     # ---------------------------------------------------------------------------
     enabled: true  # DEFAULT — preserves backward compatibility [C13]
     
-    image: "postgres:18"
+    image: "postgres:18-alpine"
     storageSize: "5Gi"
     
     # Internal credentials (auto-generated if not provided)

@@ -15,6 +15,13 @@ spec:
       labels:
         app: ed
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
     # START AFFINITY BLOCK
       affinity:
         nodeAffinity:
@@ -23,12 +30,18 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/control-plane
                     operator: DoesNotExist
-                  - key: node-role.kubernetes.io/master
-                    operator: DoesNotExist
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
           image: "postgres:18-alpine"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -45,13 +58,37 @@ spec:
               done
         - name: wait-valkey
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
         - name: wait-nats
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z nats 4222; do sleep 2; done;']
       containers:
         - name: ed
           image: "docker.io/tazamaorg/event-director:rc"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: STARTUP_TYPE
               value: "nats" 
@@ -85,6 +122,13 @@ spec:
       labels:
         app: tp
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
     # START AFFINITY BLOCK
       affinity:
         nodeAffinity:
@@ -93,12 +137,18 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/control-plane
                     operator: DoesNotExist
-                  - key: node-role.kubernetes.io/master
-                    operator: DoesNotExist
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
           image: "postgres:18-alpine"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -115,13 +165,37 @@ spec:
               done
         - name: wait-valkey
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
         - name: wait-nats
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z nats 4222; do sleep 2; done;']
       containers:
         - name: tp
           image: "docker.io/tazamaorg/typology-processor:rc"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: STARTUP_TYPE
               value: "nats" 
@@ -153,6 +227,13 @@ spec:
       labels:
         app: tadp
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
     # START AFFINITY BLOCK
       affinity:
         nodeAffinity:
@@ -161,12 +242,18 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/control-plane
                     operator: DoesNotExist
-                  - key: node-role.kubernetes.io/master
-                    operator: DoesNotExist
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
           image: "postgres:18-alpine"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -183,13 +270,37 @@ spec:
               done
         - name: wait-valkey
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
         - name: wait-nats
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z nats 4222; do sleep 2; done;']
       containers:
         - name: tadp
           image: "docker.io/tazamaorg/transaction-aggregation-decisioning-processor:rc"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: STARTUP_TYPE
               value: "nats" 
@@ -225,6 +336,13 @@ spec:
       labels:
         app: ef
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
     # START AFFINITY BLOCK
       affinity:
         nodeAffinity:
@@ -233,12 +351,18 @@ spec:
               - matchExpressions:
                   - key: node-role.kubernetes.io/control-plane
                     operator: DoesNotExist
-                  - key: node-role.kubernetes.io/master
-                    operator: DoesNotExist
     # END AFFINITY BLOCK
       initContainers:
         - name: wait-db
           image: "postgres:18-alpine"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -255,13 +379,37 @@ spec:
               done
         - name: wait-valkey
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z valkey 6379; do sleep 2; done;']
         - name: wait-nats
           image: busybox:1.36
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           command: ['sh', '-c', 'until nc -z nats 4222; do sleep 2; done;']
       containers:
         - name: ef
           image: "docker.io/tazamaorg/event-flow:rc"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           env:
             - name: STARTUP_TYPE
               value: "nats" 

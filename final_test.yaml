@@ -1112,7 +1112,7 @@ spec:
     # END OF AFFINITY BLOCK
       containers:
         - name: postgres
-          image: "postgres:18"
+          image: "postgres:18-alpine"
           env:
             - name: POSTGRES_USER
               valueFrom:

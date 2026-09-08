@@ -8,14 +8,14 @@
 
 global:
   # Storage class for persistent volumes (empty = default)
-  storageClass: ""
-  
+  storageClass: "longhorn"
+
   # Image pull policy for all containers
   imagePullPolicy: IfNotPresent
-  
+
   # Default namespace (override with --namespace)
   namespace: tazama
-  
+
   # Security context defaults
   securityContext:
     runAsNonRoot: true
@@ -28,74 +28,120 @@ global:
 # =============================================================================
 
 infrastructure:
+  # # ============================================================================
+  # # POSTGRES - Primary Database
+  # # StatefulSet with persistent storage
+  # # Databases: configuration, event_history, raw_history, evaluation
+  # # ============================================================================
+
+  # postgres:
+  #   enabled: true
+  #   disabled: false
+
+  #   image: "postgres:18-alpine"
+
+  #   # Primary storage for all tazama databases
+  #   storageSize: "5Gi"
+
+  #   resources:
+  #     requests:
+  #       cpu: "100m"
+  #       memory: "256Mi"
+  #     limits:
+  #       cpu: "500m"
+  #       memory: "512Mi"
+
+  #   # Persistence settings
+  #   persistence:
+  #     enabled: true
+  #     storageClass: "longhorn"
+  #     accessMode: ReadWriteOnce
+  #     retentionPolicy: Retain
+
+  #   # Database initialization (auto-created by ConfigMap)
+  #   databases:
+  #     - configuration
+  #     - event_history
+  #     - raw_history
+  #     - evaluation
+
+  #   # Connection defaults (for internal services)
+  #   port: 5432
+  #   database: "tazama"
+
+  #   # Postgres-specific settings
+  #   postgresql:
+  #     maxConnections: 100
+  #     sharedBuffers: "128MB"
+
+  #   # Credentials reference (auto-created by Helm)
+  #   auth:
+  #     database: tazama
+  #     username: tazama
+  #     # Password generated in release secret
+
+  #   # External mode disabled (internal only)
+  #   external:
+  #     enabled: false
+
   # ============================================================================
-  # POSTGRES - Primary Database
-  # StatefulSet with persistent storage
-  # Databases: configuration, event_history, raw_history, evaluation
+  # POSTGRES - External Database
+  # User must pre-provision PostgreSQL instance and create necessary databases
+  # Databases required: configuration, event_history, raw_history, evaluation
   # ============================================================================
-  
+
   postgres:
-    enabled: true
-    disabled: false
-    
-    image: "postgres:18"
-    
-    # Primary storage for all tazama databases
-    storageSize: "5Gi"
-    
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "256Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
-    
-    # Persistence settings
-    persistence:
-      enabled: true
-      storageClass: ""
-      accessMode: ReadWriteOnce
-      retentionPolicy: Retain
-    
-    # Database initialization (auto-created by ConfigMap)
-    databases:
-      - configuration
-      - event_history
-      - raw_history
-      - evaluation
-    
-    # Connection defaults (for internal services)
-    port: 5432
-    database: "tazama"
-    
-    # Postgres-specific settings
-    postgresql:
-      maxConnections: 100
-      sharedBuffers: "128MB"
-    
-    # Credentials reference (auto-created by Helm)
-    auth:
-      database: tazama
-      username: tazama
-      # Password generated in release secret
-    
-    # External mode disabled (internal only)
+    # Disabled: chart will not deploy PostgreSQL
+    enabled: false
+    disabled: true
+
+    # External database configuration
     external:
-      enabled: false
+      enabled: true
+
+      # External PostgreSQL host (Kubernetes service DNS name)
+      # Format: <service-name>.<namespace>.svc.cluster.local
+      host: "tazama-db.tazama.svc.cluster.local"
+
+      # PostgreSQL port
+      port: 5432
+
+      # Database name (used as default, individual services use specific DBs)
+      database: "tazama"
+
+      # Secret reference for database credentials
+      # IMPORTANT: User must create this secret BEFORE installing the chart
+      # See PRE-DEPLOYMENT REQUIREMENTS section below
+      secretRef:
+        # Name of the Kubernetes Secret containing credentials
+        name: "tazama-shared-secrets"
+
+        # Keys within the secret (these keys are used by Tazama services)
+        keys:
+          # Username key (services use CONFIGURATION_DATABASE_USER, etc.)
+          username: "CONFIGURATION_DATABASE_USER"
+          # Password key (services use CONFIGURATION_DATABASE_PASSWORD, etc.)
+          password: "CONFIGURATION_DATABASE_PASSWORD"
+
+    # Note: When using external database, the following databases must exist:
+    # - configuration
+    # - event_history
+    # - raw_history
+    # - evaluation
+    # User is responsible for creating these databases before deploying Tazama
 
   # ============================================================================
   # VALKEY - Redis-compatible Cache
   # Deployment with optional persistence
   # Used for: session storage, caching, temporary data
   # ============================================================================
-  
+
   valkey:
     enabled: true
     disabled: false
-    
+
     image: "valkey/valkey:8.0"
-    
+
     resources:
       requests:
         cpu: "50m"
@@ -103,23 +149,23 @@ infrastructure:
       limits:
         cpu: "200m"
         memory: "256Mi"
-    
+
     # Persistence for cache data (optional)
     persistence:
-      enabled: false
+      enabled: true
       storageSize: "1Gi"
-      storageClass: ""
-    
+      storageClass: "longhorn"
+
     # Connection defaults
     port: 6379
-    
+
     # Valkey/Redis configuration
     config:
       maxmemory: "200mb"
       maxmemory-policy: "allkeys-lru"
       timeout: 0
       tcp-keepalive: 300
-    
+
     # External mode disabled (internal only)
     external:
       enabled: false
@@ -129,20 +175,20 @@ infrastructure:
   # StatefulSet with persistence for message durability
   # Used for: event streaming, service communication
   # ============================================================================
-  
+
   nats:
     enabled: true
     disabled: false
-    
+
     image: "nats:2.10"
-    
+
     # JetStream configuration for message persistence
     jetStream:
       enabled: true
       storageSize: "5Gi"
       maxMemory: "512Mi"
       maxStore: "2Gi"
-    
+
     resources:
       requests:
         cpu: "100m"
@@ -150,25 +196,25 @@ infrastructure:
       limits:
         cpu: "500m"
         memory: "1Gi"
-    
+
     # Persistence for JetStream
     persistence:
       enabled: true
-      storageClass: ""
+      storageClass: "longhorn"
       accessMode: ReadWriteOnce
-    
+
     # NATS server ports
     ports:
       client: 4222
       cluster: 6222
       monitor: 8222
-    
+
     # NATS server configuration
     config:
       maxConnections: 64
       maxPayload: "1MB"
       writeDeadline: "2s"
-    
+
     # External mode disabled (internal only)
     external:
       enabled: false
@@ -191,13 +237,13 @@ services:
       limits:
         cpu: "500m"
         memory: "512Mi"
-    
+
     # Dependencies
     dependsOn:
       - postgres
       - nats
       - valkey
-  
+
   # Rule Engine Service
   rule-engine:
     enabled: true
@@ -210,11 +256,11 @@ services:
       limits:
         cpu: "500m"
         memory: "512Mi"
-    
+
     dependsOn:
       - postgres
       - nats
-  
+
   # Typology Processor
   typology-processor:
     enabled: true
@@ -227,7 +273,7 @@ services:
       limits:
         cpu: "500m"
         memory: "512Mi"
-    
+
     dependsOn:
       - postgres
       - nats
@@ -245,121 +291,121 @@ rules:
     description: "Analyzes the age of creditor accounts to identify potentially suspicious patterns related to account longevity"
     enabled: true
     riskWeight: 0.5
-  
+
   rule-002:
     name: "Transaction convergence - debtor"
     description: "Detects patterns where transactions converge on a debtor account from multiple sources"
     enabled: true
     riskWeight: 0.6
-  
+
   rule-003:
     name: "Account dormancy - creditor"
     description: "Identifies dormant creditor accounts that suddenly become active"
     enabled: true
     riskWeight: 0.4
-  
+
   rule-004:
     name: "Account dormancy - debtor"
     description: "Identifies dormant debtor accounts that suddenly become active"
     enabled: true
     riskWeight: 0.4
-  
+
   # Transaction similarity rules
   rule-006:
     name: "Outgoing transfer similarity - amounts"
     description: "Detects patterns of similar transaction amounts in outgoing transfers"
     enabled: true
     riskWeight: 0.7
-  
+
   rule-007:
     name: "Outgoing transfer similarity - descriptions"
     description: "Analyzes patterns in transaction descriptions for outgoing transfers"
     enabled: true
     riskWeight: 0.5
-  
+
   rule-008:
     name: "Outgoing transfer similarity - creditor"
     description: "Identifies patterns of similar outgoing transfers to specific creditors"
     enabled: true
     riskWeight: 0.6
-  
+
   # Activity pattern rules
   rule-010:
     name: "Increased account activity: volume - debtor"
     description: "Detects unusual increases in transaction volume for debtor accounts"
     enabled: true
     riskWeight: 0.7
-  
+
   rule-011:
     name: "Increased account activity: volume - creditor"
     description: "Detects unusual increases in transaction volume for creditor accounts"
     enabled: true
     riskWeight: 0.7
-  
+
   # Convergence/divergence rules
   rule-016:
     name: "Transaction convergence - creditor"
     description: "Identifies patterns where multiple transactions converge on a creditor account"
     enabled: true
     riskWeight: 0.6
-  
+
   rule-017:
     name: "Transaction divergence - debtor"
     description: "Detects patterns where transactions diverge from a debtor account to multiple destinations"
     enabled: true
     riskWeight: 0.6
-  
+
   # Large transaction rules
   rule-018:
     name: "Exceptionally large outgoing transfer - debtor"
     description: "Flags outgoing transfers that are exceptionally large compared to historical patterns"
     enabled: true
     riskWeight: 0.8
-  
+
   rule-020:
     name: "Large transaction amount vs history - creditor"
     description: "Compares transaction amounts to historical patterns for creditor accounts"
     enabled: true
     riskWeight: 0.6
-  
+
   rule-021:
     name: "A large number of similar transaction amounts - creditor"
     description: "Detects patterns of structuring through similar transaction amounts"
     enabled: true
     riskWeight: 0.75
-  
+
   # Mirroring rules
   rule-024:
     name: "Non-commissioned transaction mirroring - creditor"
     description: "Identifies mirroring patterns in non-commissioned transactions for creditors"
     enabled: true
     riskWeight: 0.5
-  
+
   rule-025:
     name: "Non-commissioned transaction mirroring - debtor"
     description: "Identifies mirroring patterns in non-commissioned transactions for debtors"
     enabled: true
     riskWeight: 0.5
-  
+
   rule-026:
     name: "Commissioned transaction mirroring - creditor"
     description: "Identifies mirroring patterns in commissioned transactions for creditors"
     enabled: true
     riskWeight: 0.6
-  
+
   rule-027:
     name: "Commissioned transaction mirroring - debtor"
     description: "Identifies mirroring patterns in commissioned transactions for debtors"
     enabled: true
     riskWeight: 0.6
-  
+
   # Classification rules
   rule-028:
     name: "Age classification - debtor"
     description: "Classifies debtor accounts based on age-related risk factors"
     enabled: true
     riskWeight: 0.3
-  
+
   # Unfamiliar account rules
   rule-030:
     name: "Transfer to unfamiliar creditor account - debtor"
@@ -399,7 +445,7 @@ typologies:
       - rule-028
       - rule-030
     alertThreshold: 0.7
-  
+
   account-behavior:
     name: "Account Behavior Analysis"
     description: "Rules focused on account lifecycle and behavior patterns"
@@ -412,7 +458,7 @@ typologies:
       - rule-011
       - rule-028
     alertThreshold: 0.6
-  
+
   transaction-patterns:
     name: "Transaction Pattern Detection"
     description: "Rules focused on transaction amount and frequency patterns"
@@ -426,7 +472,7 @@ typologies:
       - rule-021
       - rule-030
     alertThreshold: 0.65
-  
+
   structuring-detection:
     name: "Structuring Detection"
     description: "Rules focused on detecting potential structuring behaviors"
@@ -448,14 +494,14 @@ typologies:
 deployment:
   # Development/internal deployment mode
   environment: "internal"
-  
+
   # Resource quotas for namespace
   quotas:
     enabled: false
     cpu: "2"
     memory: "4Gi"
     pods: "10"
-  
+
   # Autoscaling (disabled for internal)
   autoscaling:
     enabled: false
@@ -468,7 +514,7 @@ monitoring:
   # Prometheus metrics
   prometheus:
     enabled: false
-  
+
   # Health check endpoints
   healthCheck:
     enabled: true

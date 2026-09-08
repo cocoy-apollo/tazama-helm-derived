@@ -35,9 +35,24 @@ spec:
         app.kubernetes.io/name: nats
         app.kubernetes.io/component: messaging
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: nats
           image: {{ .Values.infrastructure.nats.image | default "nats:2.10" | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
           args:
             {{- if .Values.infrastructure.nats.jetStream.enabled }}
             # JetStream enabled - message persistence
