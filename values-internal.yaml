@@ -295,14 +295,14 @@ rulesDefaults:
   # Image pull policy
   imagePullPolicy: IfNotPresent
   
-  # Resource allocations (increased to prevent OOM kills)
+  # Resource allocations (request = limit for Guaranteed QoS)
   resources:
     requests:
       cpu: "100m"
-      memory: "2Gi"
+      memory: "1Gi"
     limits:
       cpu: "500m"
-      memory: "2Gi"
+      memory: "1Gi"
   
   # Logging configuration
   logLevel: "info"
