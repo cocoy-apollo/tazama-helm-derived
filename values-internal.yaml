@@ -486,7 +486,10 @@ typologies:
       - rule-026
       - rule-027
     alertThreshold: 0.7
-
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
 # =============================================================================
 # DEPLOYMENT SETTINGS
 # =============================================================================
