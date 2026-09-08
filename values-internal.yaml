@@ -46,10 +46,10 @@ infrastructure:
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "2Gi"
 
     # Persistence settings
     persistence:
@@ -145,10 +145,10 @@ infrastructure:
     resources:
       requests:
         cpu: "50m"
-        memory: "64Mi"
+        memory: "2Gi"
       limits:
         cpu: "200m"
-        memory: "256Mi"
+        memory: "2Gi"
 
     # Persistence for cache data (optional)
     persistence:
@@ -186,16 +186,16 @@ infrastructure:
     jetStream:
       enabled: true
       storageSize: "5Gi"
-      maxMemory: "512Mi"
+      maxmemory: "2Gi"
       maxStore: "2Gi"
 
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "1Gi"
+        memory: "2Gi"
 
     # Persistence for JetStream
     persistence:
@@ -233,10 +233,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "2Gi"
 
     # Dependencies
     dependsOn:
@@ -252,10 +252,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "2Gi"
 
     dependsOn:
       - postgres
@@ -269,10 +269,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "512Mi"
+        memory: "2Gi"
 
     dependsOn:
       - postgres
@@ -299,10 +299,10 @@ rulesDefaults:
   resources:
     requests:
       cpu: "100m"
-      memory: "1Gi"
+      memory: "2Gi"
     limits:
       cpu: "500m"
-      memory: "1Gi"
+      memory: "2Gi"
   
   # Logging configuration
   logLevel: "info"
