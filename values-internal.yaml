@@ -28,107 +28,107 @@ global:
 # =============================================================================
 
 infrastructure:
-  # # ============================================================================
-  # # POSTGRES - Primary Database
-  # # StatefulSet with persistent storage
-  # # Databases: configuration, event_history, raw_history, evaluation
-  # # ============================================================================
-
-  # postgres:
-  #   enabled: true
-  #   disabled: false
-
-  #   image: "postgres:18-alpine"
-
-  #   # Primary storage for all tazama databases
-  #   storageSize: "5Gi"
-
-  #   resources:
-  #     requests:
-  #       cpu: "100m"
-  #       memory: "256Mi"
-  #     limits:
-  #       cpu: "500m"
-  #       memory: "512Mi"
-
-  #   # Persistence settings
-  #   persistence:
-  #     enabled: true
-  #     storageClass: "longhorn"
-  #     accessMode: ReadWriteOnce
-  #     retentionPolicy: Retain
-
-  #   # Database initialization (auto-created by ConfigMap)
-  #   databases:
-  #     - configuration
-  #     - event_history
-  #     - raw_history
-  #     - evaluation
-
-  #   # Connection defaults (for internal services)
-  #   port: 5432
-  #   database: "tazama"
-
-  #   # Postgres-specific settings
-  #   postgresql:
-  #     maxConnections: 100
-  #     sharedBuffers: "128MB"
-
-  #   # Credentials reference (auto-created by Helm)
-  #   auth:
-  #     database: tazama
-  #     username: tazama
-  #     # Password generated in release secret
-
-  #   # External mode disabled (internal only)
-  #   external:
-  #     enabled: false
-
   # ============================================================================
-  # POSTGRES - External Database
-  # User must pre-provision PostgreSQL instance and create necessary databases
-  # Databases required: configuration, event_history, raw_history, evaluation
+  # POSTGRES - Primary Database
+  # StatefulSet with persistent storage
+  # Databases: configuration, event_history, raw_history, evaluation
   # ============================================================================
 
   postgres:
-    # Disabled: chart will not deploy PostgreSQL
-    enabled: false
-    disabled: true
+    enabled: true
+    disabled: false
 
-    # External database configuration
-    external:
+    image: "postgres:18-alpine"
+
+    # Primary storage for all tazama databases
+    storageSize: "5Gi"
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+    # Persistence settings
+    persistence:
       enabled: true
+      storageClass: "longhorn"
+      accessMode: ReadWriteOnce
+      retentionPolicy: Retain
 
-      # External PostgreSQL host (Kubernetes service DNS name)
-      # Format: <service-name>.<namespace>.svc.cluster.local
-      host: "tazama-db.tazama.svc.cluster.local"
+    # Database initialization (auto-created by ConfigMap)
+    databases:
+      - configuration
+      - event_history
+      - raw_history
+      - evaluation
 
-      # PostgreSQL port
-      port: 5432
+    # Connection defaults (for internal services)
+    port: 5432
+    database: "tazama"
 
-      # Database name (used as default, individual services use specific DBs)
-      database: "tazama"
+    # Postgres-specific settings
+    postgresql:
+      maxConnections: 100
+      sharedBuffers: "128MB"
 
-      # Secret reference for database credentials
-      # IMPORTANT: User must create this secret BEFORE installing the chart
-      # See PRE-DEPLOYMENT REQUIREMENTS section below
-      secretRef:
-        # Name of the Kubernetes Secret containing credentials
-        name: "tazama-shared-secrets"
+    # Credentials reference (auto-created by Helm)
+    auth:
+      database: tazama
+      username: tazama
+      # Password generated in release secret
 
-        # Keys within the secret (these keys are used by Tazama services)
-        keys:
-          # Username key (services use CONFIGURATION_DATABASE_USER, etc.)
-          username: "CONFIGURATION_DATABASE_USER"
-          # Password key (services use CONFIGURATION_DATABASE_PASSWORD, etc.)
-          password: "CONFIGURATION_DATABASE_PASSWORD"
+    # External mode disabled (internal only)
+    external:
+      enabled: false
 
-    # Note: When using external database, the following databases must exist:
-    # - configuration
-    # - event_history
-    # - raw_history
-    # - evaluation
-    # User is responsible for creating these databases before deploying Tazama
+  # # ============================================================================
+  # # POSTGRES - External Database
+  # # User must pre-provision PostgreSQL instance and create necessary databases
+  # # Databases required: configuration, event_history, raw_history, evaluation
+  # # ============================================================================
+
+  # postgres:
+  #   # Disabled: chart will not deploy PostgreSQL
+  #   enabled: false
+  #   disabled: true
+
+  #   # External database configuration
+  #   external:
+  #     enabled: true
+
+  #     # External PostgreSQL host (Kubernetes service DNS name)
+  #     # Format: <service-name>.<namespace>.svc.cluster.local
+  #     host: "tazama-db.tazama.svc.cluster.local"
+
+  #     # PostgreSQL port
+  #     port: 5432
+
+  #     # Database name (used as default, individual services use specific DBs)
+  #     database: "tazama"
+
+  #     # Secret reference for database credentials
+  #     # IMPORTANT: User must create this secret BEFORE installing the chart
+  #     # See PRE-DEPLOYMENT REQUIREMENTS section below
+  #     secretRef:
+  #       # Name of the Kubernetes Secret containing credentials
+  #       name: "tazama-shared-secrets"
+
+  #       # Keys within the secret (these keys are used by Tazama services)
+  #       keys:
+  #         # Username key (services use CONFIGURATION_DATABASE_USER, etc.)
+  #         username: "CONFIGURATION_DATABASE_USER"
+  #         # Password key (services use CONFIGURATION_DATABASE_PASSWORD, etc.)
+  #         password: "CONFIGURATION_DATABASE_PASSWORD"
+
+  #   # Note: When using external database, the following databases must exist:
+  #   # - configuration
+  #   # - event_history
+  #   # - raw_history
+  #   # - evaluation
+  #   # User is responsible for creating these databases before deploying Tazama
 
   # ============================================================================
   # VALKEY - Redis-compatible Cache

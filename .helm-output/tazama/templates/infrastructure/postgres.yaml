@@ -1,14 +1,10 @@
-{{/*
-Postgres infrastructure component.
-This template is conditionally included when internal Postgres is enabled
-via the tazama.infrastructure.internal.enabled helper function.
-*/}}
-{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "postgres" "context" $) }}
+---
+# Source: tazama/templates/infrastructure/postgres.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init-script
-  namespace: {{ .Release.Namespace }}
+  namespace: default
 data:
   00-CREATE.sql: |
     create database configuration;
@@ -230,11 +226,25 @@ data:
     create index idx_pain013_cdtr_acct_id on pain013 (creditorAccountId, tenantId);
     create index idx_pain013_credttm on pain013 (creDtTm, tenantId);
 ---
+# Source: tazama/templates/infrastructure/postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+# Source: tazama/templates/infrastructure/postgres.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: {{ .Release.Namespace }}
+  namespace: default
 spec:
   serviceName: "postgres"
   replicas: 1
@@ -262,7 +272,7 @@ spec:
                     operator: DoesNotExist
       containers:
         - name: postgres
-          image: "{{ .Values.infrastructure.postgres.image }}"
+          image: "postgres:18-alpine"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -320,20 +330,7 @@ spec:
         name: postgres-data
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        storageClassName: "{{ .Values.global.storageClass }}"
+        storageClassName: "longhorn"
         resources:
           requests:
-            storage: "{{ .Values.infrastructure.postgres.storageSize }}"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres
-  namespace: {{ .Release.Namespace }}
-spec:
-  ports:
-    - port: 5432
-      targetPort: 5432
-  selector:
-    app: postgres
-{{- end }}
+            storage: "5Gi"

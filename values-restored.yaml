@@ -1,0 +1,326 @@
+# ==============================================================================
+# TAZAMA HELM CHART - FLEXIBLE INFRASTRUCTURE VALUES
+# ==============================================================================
+# Supports three deployment modes:
+#   1. INTERNAL (default) — Auto-scaffolded infrastructure
+#   2. EXTERNAL — Connect to managed services (AWS RDS, ElastiCache, etc.)
+#   3. HYBRID — Mix internal and external per-service
+#
+# CONSTRAINTS IMPLEMENTED:
+#   C1: Infrastructure NOT deployed when external.enabled=true
+#   C2: Internal and external are mutually exclusive
+#   C4: Credentials never in values.yaml (secretRef pattern)
+#   C5: Secrets never have working placeholder values
+#   C13: Defaults preserve current behavior (backward compat)
+#   C10: Chart fails if required dependencies unavailable
+# ==============================================================================
+
+global:
+  tazamaVersion: "rc"
+  imageRegistry: ""
+  storageClass: "longhorn-single"
+
+# ==============================================================================
+# INFRASTRUCTURE: POSTGRESQL DATABASE
+# ==============================================================================
+# Three mutually exclusive modes:
+#   - enabled=true, external.enabled=false → Internal (default)
+#   - enabled=false, external.enabled=true → External managed
+#   - disabled=true → No database (fails if services need it)
+infrastructure:
+  postgres:
+    # ---------------------------------------------------------------------------
+    # MODE 1: INTERNAL INFRASTRUCTURE (current default) [C13]
+    # ---------------------------------------------------------------------------
+    enabled: true  # Default preserves backward compatibility
+    disabled: false
+    
+    image: "postgres:18-alpine"
+    storageSize: "5Gi"
+    
+    # Internal resource configuration
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+    
+    # Persistence settings
+    persistence:
+      enabled: true
+      storageClass: ""  # Falls back to global.storageClass
+      accessMode: ReadWriteOnce
+      retentionPolicy: Retain  # [C7: Never delete PVC without explicit intent]
+    
+    # ---------------------------------------------------------------------------
+    # MODE 2: EXTERNAL MANAGED SERVICE
+    # ---------------------------------------------------------------------------
+    external:
+      enabled: false  # When true, internal StatefulSet is NOT created [C1]
+      
+      # Connection endpoint (REQUIRED if external.enabled=true)
+      host: ""
+      port: 5432
+      
+      # Default database name
+      database: "tazama"
+      
+      # TLS Configuration [C14: Never bypass TLS without explicit waiver]
+      ssl:
+        enabled: true
+        require: true        # Fail if TLS cannot be negotiated
+        skipVerify: false    # SECURITY WARNING: true bypasses cert verification
+      
+      # Credential injection via Kubernetes Secret [C4]
+      # REQUIRED when external.enabled=true [C10]
+      # User must create: kubectl create secret generic <name> --from-literal=user=... --from-literal=password=...
+      secretRef:
+        name: ""             # REQUIRED: e.g., "rds-credentials"
+        keys:
+          user: "user"
+          password: "password"
+      
+      # Connection pooling (optional)
+      connectionPool:
+        maxConnections: 20
+        idleTimeout: 300
+
+  # ==============================================================================
+  # INFRASTRUCTURE: VALKEY (Redis-compatible Cache)
+  # ==============================================================================
+  valkey:
+    enabled: true  # Default: internal [C13]
+    disabled: false
+    
+    image: "valkey/valkey:8.0"
+    
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+    
+    persistence:
+      enabled: false
+      storageSize: "1Gi"
+    
+    external:
+      enabled: false
+      
+      host: ""       # e.g., "mycache.xxxx.cache.amazonaws.com"
+      port: 6379
+      
+      ssl:
+        enabled: true
+        skipVerify: false
+      
+      secretRef:
+        name: ""
+        keys:
+          password: "password"
+      
+      # Cluster mode for AWS ElastiCache Cluster
+      cluster:
+        enabled: false
+        nodes: []
+
+  # ==============================================================================
+  # INFRASTRUCTURE: NATS (Message Broker)
+  # ==============================================================================
+  nats:
+    enabled: true  # Default: internal [C13]
+    
+    image: "nats:2.10"
+    
+    # NATS JetStream Configuration (persistence)
+    jetStream:
+      enabled: true           # Enable JetStream for message persistence
+      storageSize: "5Gi"      # PVC size for JetStream storage
+      maxMemory: "512Mi"      # Max memory for JetStream stream storage (optional)
+      maxStore: "2Gi"         # Max disk storage for JetStream streams (optional)
+    
+    # NATS Connection Configuration
+    config:
+      maxConnections: 64        # Maximum client connections
+      maxPayload: "1MB"         # Maximum message payload size
+      writeDeadline: "2s"      # Write timeout for client connections
+    
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    
+    # External NATS configuration
+    external:
+      enabled: false
+      
+      # Single NATS endpoint
+      host: ""
+      port: 4222
+      
+      # OR cluster endpoints (use this for HA clusters)
+      cluster:
+        enabled: false
+        urls: []
+        # urls:
+        #   - "nats://nats-1.example.com:4222"
+        #   - "nats://nats-2.example.com:4222"
+        #   - "nats://nats-3.example.com:4222"
+      
+      # TLS Configuration
+      ssl:
+        enabled: true
+        skipVerify: false
+      
+      # Credential reference (Secret must contain: user, password)
+      # OR for JWT auth: jwt, seed (nkey seed)
+      secretRef:
+        name: ""
+        keys:
+          user: "user"
+          password: "password"
+          # JWT auth (optional):
+          jwt: "jwt"
+          seed: "seed"
+
+# ==============================================================================
+# CORE SERVICES CONFIGURATION
+# ==============================================================================
+core:
+  adminService:
+    port: 3100
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  eventDirector:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  eventFlow:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  typologyProcessor:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  transactionMonitor:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  
+  tms:
+    port: 3000
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+# ==============================================================================
+# CONFIGURATION SEEDING
+# ==============================================================================
+# Configuration seeding populates the database with initial network maps,
+# rule configurations, and typology configurations.
+# ==============================================================================
+configSeed:
+  examples:
+    enabled: false  # Set to true to deploy example ConfigMap
+
+# ==============================================================================
+# RULES CONFIGURATION
+# ==============================================================================
+# rulesDefaults: Common settings applied to all rule deployments
+# rules: Individual rule configuration (override with values-internal.yaml)
+# ==============================================================================
+
+rulesDefaults:
+  replicas: 1
+  version: "1.0.0"
+  imagePullPolicy: IfNotPresent
+  
+  # Wait for database schema and dependencies before starting rule
+  waitForSchema: true
+  
+  # Resource limits for all rules
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  # Node placement (optional)
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+
+# Individual rule configurations
+# Override this section with values-internal.yaml to enable specific rules
+# Format:
+#   rule-XXX:
+#     name: "Human readable name"
+#     description: "Rule description"
+#     enabled: true/false
+#     riskWeight: 0.X
+#     env: []  # Optional additional environment variables
+rules: {}
+
+# ==============================================================================
+# TYPOLOGIES CONFIGURATION
+# ==============================================================================
+# Typologies group rules together for evaluation
+# Override with values-internal.yaml
+# ==============================================================================
+typologies: {}
+
+# ==============================================================================
+# VALIDATION SETTINGS
+# ==============================================================================
+validation:
+  enabled: true
+  validationWarningsSuppressed: false
