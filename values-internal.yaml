@@ -233,10 +233,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "3Gi"
+        memory: "4Gi"
       limits:
         cpu: "500m"
-        memory: "3Gi"
+        memory: "4Gi"
 
     # Dependencies
     dependsOn:
@@ -269,10 +269,10 @@ services:
     resources:
       requests:
         cpu: "100m"
-        memory: "3Gi"
+        memory: "4Gi"
       limits:
         cpu: "500m"
-        memory: "3Gi"
+        memory: "4Gi"
 
     dependsOn:
       - postgres
@@ -299,10 +299,10 @@ typologyDefaults:
   resources:
     requests:
       cpu: "100m"
-      memory: "2Gi"
+      memory: "4Gi"
     limits:
       cpu: "500m"
-      memory: "2Gi"
+      memory: "4Gi"
   logLevel: "info"
   nodeEnv: "production"
 
@@ -341,10 +341,10 @@ rulesDefaults:
     resources:
       requests:
         cpu: "100m"
-        memory: "3Gi"
+        memory: "4Gi"
       limits:
         cpu: "500m"
-        memory: "3Gi"
+        memory: "4Gi"
 
     dependsOn:
       - postgres
@@ -362,10 +362,10 @@ rulesDefaults:
     resources:
       requests:
         cpu: "100m"
-        memory: "3Gi"
+        memory: "4Gi"
       limits:
         cpu: "500m"
-        memory: "3Gi"
+        memory: "4Gi"
 
     dependsOn:
       - postgres

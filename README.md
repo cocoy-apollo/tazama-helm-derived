@@ -2,14 +2,55 @@
 
 A flexible Helm chart for deploying the Tazama financial crime detection platform with support for both internal and external infrastructure components.
 
+> ⚠️ **BRANCH NOTICE**: This is the `Full-Internal-No-External-Dependencies` branch.  
+> **For deployments from this branch, use `values-internal.yaml` exclusively.**  
+> All infrastructure (PostgreSQL, Valkey/Redis, NATS) is deployed in-cluster with no external dependencies.  
+> External dependency configurations described below do NOT apply to this branch.
+
 ## Table of Contents
 
+- [Internal Deployment (This Branch)](#internal-deployment-this-branch)
 - [Key Concepts](#key-concepts)
 - [Infrastructure Options](#infrastructure-options)
 - [Installation](#installation)
 - [Configuration Reference](#configuration-reference)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Internal Deployment (This Branch)
+
+This branch is configured for **internal-only deployment** with all infrastructure components deployed in-cluster.
+
+### Quick Start
+
+```bash
+# Deploy using values-internal.yaml
+helm install tazama ./tazama-helm-derived \
+  -n tazama-internal --create-namespace \
+  -f values-internal.yaml
+```
+
+### What's Included
+
+| Component | Deployment | Notes |
+|-----------|------------|-------|
+| PostgreSQL | Internal StatefulSet | In-cluster database |
+| Valkey/Redis | Internal Deployment | In-cluster cache |
+| NATS | Internal StatefulSet | JetStream enabled |
+| All Services | Internal | No external endpoints required |
+
+### values-internal.yaml
+
+The `values-internal.yaml` file contains the complete configuration for internal deployment:
+
+- All infrastructure components set to `enabled: true`
+- Resource allocations optimized for internal workloads
+- No external dependency configurations
+- Self-contained deployment with persistent storage
+
+> **Note**: External dependency instructions in this README are provided for reference only and do NOT apply when deploying from this branch.
 
 ---
 
@@ -20,6 +61,8 @@ This chart supports **flexible infrastructure deployment**:
 1. **Internal Mode** (default): All infrastructure (PostgreSQL, Valkey/Redis, NATS) deployed in-cluster
 2. **External Mode**: Connect to managed services (AWS RDS, ElastiCache, cloud NATS)
 3. **Hybrid Mode**: Mix internal and external services as needed
+
+> **Branch Context**: The `Full-Internal-No-External-Dependencies` branch uses **Internal Mode exclusively**.
 
 ### Design Principles
 
@@ -83,7 +126,26 @@ This chart supports **flexible infrastructure deployment**:
 - Helm 3.8+
 - `kubectl` configured to access your cluster
 
+### Internal Deployment (This Branch)
+
+For deployments from the `Full-Internal-No-External-Dependencies` branch:
+
+```bash
+# Dry-run to validate configuration
+helm install tazama ./tazama-helm-derived \
+  -n tazama-internal --create-namespace \
+  -f values-internal.yaml \
+  --dry-run --debug
+
+# Install
+helm install tazama ./tazama-helm-derived \
+  -n tazama-internal --create-namespace \
+  -f values-internal.yaml
+```
+
 ### Step 1: Prepare Secrets (External Mode Only)
+
+> **Note**: This step is NOT required for the `Full-Internal-No-External-Dependencies` branch.
 
 If using external infrastructure, create Kubernetes secrets:
 
@@ -104,6 +166,8 @@ kubectl create secret generic nats-credentials \
 ```
 
 ### Step 2: Create values File
+
+> **Note**: For the `Full-Internal-No-External-Dependencies` branch, use `values-internal.yaml` directly.
 
 Create a `values-production.yaml` file with your configuration:
 
