@@ -9,13 +9,13 @@
 global:
   # Storage class for persistent volumes (empty = default)
   storageClass: "longhorn"
-  
+
   # Image pull policy for all containers
   imagePullPolicy: IfNotPresent
-  
+
   # Default namespace (override with --namespace)
   namespace: tazama
-  
+
   # Security context defaults
   securityContext:
     runAsNonRoot: true
@@ -32,86 +32,91 @@ global:
 infrastructure:
   # ============================================================================
   # POSTGRES - External Database
-  # User must pre-provision PostgreSQL instance and create necessary databases
-  # Databases required: configuration, event_history, raw_history, evaluation
+  # Database initialization is handled automatically by postgres-external-init Job
+  # Databases created: configuration, event_history, raw_history, evaluation, tazama
   # ============================================================================
-  
+
   postgres:
     # Disabled: chart will not deploy PostgreSQL
     enabled: false
     disabled: true
-    
+
+    # Image used for external database initialization Job
+    # This must be a PostgreSQL client image for running init scripts
+    image: "postgres:18-alpine"
+
     # External database configuration
     external:
       enabled: true
-      
-      # External PostgreSQL host (Kubernetes service DNS name)
+
+      # External PostgreSQL host (Kubernetes service DNS name or external IP)
       # Format: <service-name>.<namespace>.svc.cluster.local
       host: "tazama-db.tazama.svc.cluster.local"
-      
+
       # PostgreSQL port
       port: 5432
-      
+
       # Database name (used as default, individual services use specific DBs)
       database: "tazama"
-      
+
       # Secret reference for database credentials
       # IMPORTANT: User must create this secret BEFORE installing the chart
       # See PRE-DEPLOYMENT REQUIREMENTS section below
       secretRef:
         # Name of the Kubernetes Secret containing credentials
         name: "tazama-shared-secrets"
-        
+
         # Keys within the secret (these keys are used by Tazama services)
         keys:
           # Username key (services use CONFIGURATION_DATABASE_USER, etc.)
           username: "CONFIGURATION_DATABASE_USER"
           # Password key (services use CONFIGURATION_DATABASE_PASSWORD, etc.)
           password: "CONFIGURATION_DATABASE_PASSWORD"
-    
-    # Note: When using external database, the following databases must exist:
-    # - configuration
-    # - event_history  
-    # - raw_history
-    # - evaluation
-    # User is responsible for creating these databases before deploying Tazama
+
+    # Note: Database initialization is handled automatically by the
+    # postgres-external-init Job which creates:
+    # - configuration database (for network_map, typology, rule tables)
+    # - event_history database (for account, entity, transaction tables)
+    # - raw_history database (for pacs002, pacs008, pain001, pain013 tables)
+    # - evaluation database (for evaluation results)
+    # - tazama database (for vocab table)
 
   # ============================================================================
   # VALKEY - Redis-compatible Cache (Internal)
   # Deployment with optional persistence
   # Used for: session storage, caching, temporary data
   # ============================================================================
-  
+
   valkey:
     enabled: true
     disabled: false
-    
+
     image: "valkey/valkey:8.0"
-    
+
     resources:
       requests:
         cpu: "50m"
-        memory: "64Mi"
+        memory: "2Gi"
       limits:
         cpu: "200m"
-        memory: "256Mi"
-    
+        memory: "2Gi"
+
     # Persistence for cache data (optional)
     persistence:
       enabled: false
       storageSize: "1Gi"
       storageClass: "longhorn"
-    
+
     # Connection defaults
     port: 6379
-    
+
     # Valkey/Redis configuration
     config:
       maxmemory: "200mb"
       maxmemory-policy: "allkeys-lru"
       timeout: 0
       tcp-keepalive: 300
-    
+
     # External mode disabled (using internal)
     external:
       enabled: false
@@ -121,86 +126,486 @@ infrastructure:
   # StatefulSet with persistence for message durability
   # Used for: event streaming, service communication
   # ============================================================================
-  
+
   nats:
     enabled: true
     disabled: false
-    
+
     image: "nats:2.10"
-    
+
     # JetStream configuration for message persistence
     jetStream:
       enabled: true
       storageSize: "5Gi"
-      maxMemory: "512Mi"
+      maxMemory: "2Gi"
       maxStore: "2Gi"
-    
+
     resources:
       requests:
         cpu: "100m"
-        memory: "256Mi"
+        memory: "2Gi"
       limits:
         cpu: "500m"
-        memory: "1Gi"
-    
+        memory: "2Gi"
+
     # Persistence for JetStream
     persistence:
       enabled: true
       storageClass: "longhorn"
       accessMode: ReadWriteOnce
-    
+
     # NATS server ports
     ports:
       client: 4222
       cluster: 6222
       monitor: 8222
-    
+
     # NATS server configuration
     config:
       maxConnections: 64
       maxPayload: "1MB"
       writeDeadline: "2s"
-    
+
     # External mode disabled (using internal)
     external:
       enabled: false
 
 # =============================================================================
+# SERVICES CONFIGURATION
+# Core services that consume the infrastructure
+# =============================================================================
+
+services:
+  # Transaction Monitoring Service (TMS)
+  transaction-monitor:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    # Dependencies
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+  # Rule Engine Service
+  rule-engine:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+    dependsOn:
+      - postgres
+      - nats
+
+  # Typology Processor (TP)
+  typology-processor:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+# =============================================================================
+# TYPOLOGY DEFAULTS
+# Resource limits and settings for typology pods (not rules)
+# =============================================================================
+
+typologyDefaults:
+  replicas: 1
+  waitForSchema: true
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "2Gi"
+    limits:
+      cpu: "500m"
+      memory: "2Gi"
+  logLevel: "info"
+  nodeEnv: "production"
+
+# =============================================================================
+# RULES DEFAULTS
+# Resource limits and settings for all rules and typologies
+# =============================================================================
+
+rulesDefaults:
+  # Number of replicas for each rule/typology deployment
+  replicas: 1
+
+  # Wait for database schema to be initialized before starting
+  waitForSchema: true
+
+  # Image pull policy
+  imagePullPolicy: IfNotPresent
+
+  # Resource allocations (request = limit for Guaranteed QoS)
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # Logging configuration
+  logLevel: "info"
+  nodeEnv: "production"
+
+# =============================================================================
+# EVENT DEMONSTRATOR (ED) - Additional service
+# Event Demonstrator handles demo/test event processing
+# =============================================================================
+
+  event-demonstrator:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+# =============================================================================
+# TRANSACTION AGGREGATION & DISPLAY PROCESSOR (TADP)
+# =============================================================================
+
+  tadp:
+    enabled: true
+    replicas: 1
+    image: ""
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "3Gi"
+      limits:
+        cpu: "500m"
+        memory: "3Gi"
+
+    dependsOn:
+      - postgres
+      - nats
+      - valkey
+
+# =============================================================================
+# RULES CONFIGURATION
+# All working rules from frmscoe organization (20 rules confirmed available)
+# =============================================================================
+
+rules:
+  # Account-based rules
+  rule-001:
+    name: "Derived account age - creditor"
+    description: "Analyzes the age of creditor accounts to identify potentially suspicious patterns related to account longevity"
+    enabled: true
+    riskWeight: 0.5
+
+  rule-002:
+    name: "Transaction convergence - debtor"
+    description: "Detects patterns where transactions converge on a debtor account from multiple sources"
+    enabled: true
+    riskWeight: 0.6
+
+  rule-003:
+    name: "Account dormancy - creditor"
+    description: "Identifies dormant creditor accounts that suddenly become active"
+    enabled: true
+    riskWeight: 0.4
+
+  rule-004:
+    name: "Account dormancy - debtor"
+    description: "Identifies dormant debtor accounts that suddenly become active"
+    enabled: true
+    riskWeight: 0.4
+
+  # Transaction similarity rules
+  rule-006:
+    name: "Outgoing transfer similarity - amounts"
+    description: "Detects patterns of similar transaction amounts in outgoing transfers"
+    enabled: true
+    riskWeight: 0.7
+
+  rule-007:
+    name: "Outgoing transfer similarity - descriptions"
+    description: "Analyzes patterns in transaction descriptions for outgoing transfers"
+    enabled: true
+    riskWeight: 0.5
+
+  rule-008:
+    name: "Outgoing transfer similarity - creditor"
+    description: "Identifies patterns of similar outgoing transfers to specific creditors"
+    enabled: true
+    riskWeight: 0.6
+
+  # Activity pattern rules
+  rule-010:
+    name: "Increased account activity: volume - debtor"
+    description: "Detects unusual increases in transaction volume for debtor accounts"
+    enabled: true
+    riskWeight: 0.7
+
+  rule-011:
+    name: "Increased account activity: volume - creditor"
+    description: "Detects unusual increases in transaction volume for creditor accounts"
+    enabled: true
+    riskWeight: 0.7
+
+  # Convergence/divergence rules
+  rule-016:
+    name: "Transaction convergence - creditor"
+    description: "Identifies patterns where multiple transactions converge on a creditor account"
+    enabled: true
+    riskWeight: 0.6
+
+  rule-017:
+    name: "Transaction divergence - debtor"
+    description: "Detects patterns where transactions diverge from a debtor account to multiple destinations"
+    enabled: true
+    riskWeight: 0.6
+
+  # Large transaction rules
+  rule-018:
+    name: "Exceptionally large outgoing transfer - debtor"
+    description: "Flags outgoing transfers that are exceptionally large compared to historical patterns"
+    enabled: true
+    riskWeight: 0.8
+
+  rule-020:
+    name: "Large transaction amount vs history - creditor"
+    description: "Compares transaction amounts to historical patterns for creditor accounts"
+    enabled: true
+    riskWeight: 0.6
+
+  rule-021:
+    name: "A large number of similar transaction amounts - creditor"
+    description: "Detects patterns of structuring through similar transaction amounts"
+    enabled: true
+    riskWeight: 0.75
+
+  # Mirroring rules
+  rule-024:
+    name: "Non-commissioned transaction mirroring - creditor"
+    description: "Identifies mirroring patterns in non-commissioned transactions for creditors"
+    enabled: true
+    riskWeight: 0.5
+
+  rule-025:
+    name: "Non-commissioned transaction mirroring - debtor"
+    description: "Identifies mirroring patterns in non-commissioned transactions for debtors"
+    enabled: true
+    riskWeight: 0.5
+
+  rule-026:
+    name: "Commissioned transaction mirroring - creditor"
+    description: "Identifies mirroring patterns in commissioned transactions for creditors"
+    enabled: true
+    riskWeight: 0.6
+
+  rule-027:
+    name: "Commissioned transaction mirroring - debtor"
+    description: "Identifies mirroring patterns in commissioned transactions for debtors"
+    enabled: true
+    riskWeight: 0.6
+
+  # Classification rules
+  rule-028:
+    name: "Age classification - debtor"
+    description: "Classifies debtor accounts based on age-related risk factors"
+    enabled: true
+    riskWeight: 0.3
+
+  # Unfamiliar account rules
+  rule-030:
+    name: "Transfer to unfamiliar creditor account - debtor"
+    description: "Flags transfers to previously unseen creditor accounts"
+    enabled: true
+    riskWeight: 0.65
+
+# =============================================================================
+# TYPOLOGY CONFIGURATION
+# Main typology grouping all available rules
+# =============================================================================
+
+typologies:
+  main:
+    name: "Anti-Money Laundering Detection"
+    description: "Primary typology for AML transaction monitoring using all available detection rules"
+    enabled: true
+    rules:
+      - rule-001
+      - rule-002
+      - rule-003
+      - rule-004
+      - rule-006
+      - rule-007
+      - rule-008
+      - rule-010
+      - rule-011
+      - rule-016
+      - rule-017
+      - rule-018
+      - rule-020
+      - rule-021
+      - rule-024
+      - rule-025
+      - rule-026
+      - rule-027
+      - rule-028
+      - rule-030
+    alertThreshold: 0.7
+
+  account-behavior:
+    name: "Account Behavior Analysis"
+    description: "Rules focused on account lifecycle and behavior patterns"
+    enabled: true
+    rules:
+      - rule-001
+      - rule-003
+      - rule-004
+      - rule-010
+      - rule-011
+      - rule-028
+    alertThreshold: 0.6
+
+  transaction-patterns:
+    name: "Transaction Pattern Detection"
+    description: "Rules focused on transaction amount and frequency patterns"
+    enabled: true
+    rules:
+      - rule-006
+      - rule-007
+      - rule-008
+      - rule-018
+      - rule-020
+      - rule-021
+      - rule-030
+    alertThreshold: 0.65
+
+  structuring-detection:
+    name: "Structuring Detection"
+    description: "Rules focused on detecting potential structuring behaviors"
+    enabled: true
+    rules:
+      - rule-002
+      - rule-016
+      - rule-017
+      - rule-024
+      - rule-025
+      - rule-026
+      - rule-027
+    alertThreshold: 0.7
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+
+# =============================================================================
+# DEPLOYMENT SETTINGS
+# =============================================================================
+
+deployment:
+  # External database deployment mode
+  environment: "external-db"
+
+  # Resource quotas for namespace
+  quotas:
+    enabled: false
+    cpu: "2"
+    memory: "4Gi"
+    pods: "10"
+
+  # Autoscaling (disabled for external-db)
+  autoscaling:
+    enabled: false
+
+# =============================================================================
+# MONITORING & OBSERVABILITY
+# =============================================================================
+
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: false
+
+  # Health check endpoints
+  healthCheck:
+    enabled: true
+    path: "/health"
+    port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 30
+
+# =============================================================================
 # PRE-DEPLOYMENT REQUIREMENTS
 # =============================================================================
-# 
+#
 # Before installing with this values file, complete the following steps:
 #
-# 1. Create the namespace:
+# 1. Create the namespace (if not already created):
 #    kubectl create namespace tazama
 #
 # 2. Ensure external PostgreSQL database is running and accessible:
-#    - Host: tazama-db.tazama.svc.cluster.local
+#    - Host: tazama-db.tazama.svc.cluster.local (update as needed)
 #    - Port: 5432
-#    - Username: postgres
-#    - Password: db2f-6dc5-4db4-942
+#    - The database must have network connectivity from the Kubernetes cluster
 #
-# 3. Create required databases in PostgreSQL:
-#    psql -h tazama-db.tazama.svc.cluster.local -U postgres -c "
-#      CREATE DATABASE configuration;
-#      CREATE DATABASE event_history;
-#      CREATE DATABASE raw_history;
-#      CREATE DATABASE evaluation;
-#    "
-#
-# 4. Create Kubernetes Secret with database credentials:
+# 3. Create Kubernetes Secret with database credentials:
 #    The secret MUST use these exact keys (required by Tazama services):
 #
 #    kubectl create secret generic tazama-shared-secrets \
 #      --from-literal=CONFIGURATION_DATABASE_USER=postgres \
-#      --from-literal=CONFIGURATION_DATABASE_PASSWORD='db2f-6dc5-4db4-942' \
+#      --from-literal=CONFIGURATION_DATABASE_PASSWORD='<your-password>' \
 #      --from-literal=EVENT_HISTORY_DATABASE_USER=postgres \
-#      --from-literal=EVENT_HISTORY_DATABASE_PASSWORD='db2f-6dc5-4db4-942' \
+#      --from-literal=EVENT_HISTORY_DATABASE_PASSWORD='<your-password>' \
 #      --from-literal=EVALUATION_DATABASE_USER=postgres \
-#      --from-literal=EVALUATION_DATABASE_PASSWORD='db2f-6dc5-4db4-942' \
+#      --from-literal=EVALUATION_DATABASE_PASSWORD='<your-password>' \
 #      --from-literal=RAW_HISTORY_DATABASE_USER=postgres \
-#      --from-literal=RAW_HISTORY_DATABASE_PASSWORD='db2f-6dc5-4db4-942' \
+#      --from-literal=RAW_HISTORY_DATABASE_PASSWORD='<your-password>' \
 #      -n tazama
+#
+# AUTOMATED DATABASE INITIALIZATION:
+# The helm chart includes a Job (postgres-external-init) that automatically:
+# - Creates all required databases (configuration, event_history, raw_history, evaluation, tazama)
+# - Creates all required tables and indexes
+# - Runs with helm pre-install/pre-upgrade hooks
+# - Is idempotent (safe to run multiple times)
+#
+# The Job runs BEFORE the main application pods start, ensuring databases
+# are ready when services begin connecting.
 #
 # =============================================================================
 # INSTALLATION COMMAND
@@ -210,4 +615,10 @@ infrastructure:
 #   -n tazama \
 #   -f values-external-db.yaml
 #
+# =============================================================================
+# RULES NOT AVAILABLE (DOCUMENTATION)
+# The following rule numbers were not found in frmscoe organization (404):
+# - rule-005, rule-009, rule-012 through rule-015
+# - rule-019, rule-022, rule-023, rule-029
+# - rule-031 through rule-033
 # =============================================================================

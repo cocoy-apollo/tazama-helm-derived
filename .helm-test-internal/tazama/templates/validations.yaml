@@ -1,0 +1,84 @@
+---
+# Source: tazama/templates/validations.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "release-name-validation-sa"
+  namespace: "default"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    "helm.sh/hook-weight": "-20"
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/instance: "release-name"
+---
+# Source: tazama/templates/validations.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: "release-name-validation-role"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    "helm.sh/hook-weight": "-20"
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+# Source: tazama/templates/validations.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: "release-name-validation-rolebinding"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    "helm.sh/hook-weight": "-15"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: "release-name-validation-role"
+subjects:
+- kind: ServiceAccount
+  name: "release-name-validation-sa"
+  namespace: "default"
+---
+# Source: tazama/templates/validations.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "release-name-validation-hook"
+  namespace: "default"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    "helm.sh/hook-weight": "-10"
+  labels:
+    app.kubernetes.io/managed-by: "Helm"
+    app.kubernetes.io/instance: "release-name"
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  restartPolicy: Never
+  serviceAccountName: release-name-validation-sa
+  containers:
+    - name: validation
+      image: "busybox:latest"
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Running infrastructure validation..."
+          echo "Release: release-name"
+          echo "Namespace: default"
+          POSTGRES_MODE="internal"
+          echo "PostgreSQL mode: $POSTGRES_MODE"
+          VALKEY_MODE="internal"
+          echo "Valkey mode: $VALKEY_MODE"
+          NATS_MODE="internal"
+          echo "NATS mode: $NATS_MODE"
+          
+          # Check for disabled infrastructure with warnings
+          
+          echo "Configuration validation passed!"
+          exit 0

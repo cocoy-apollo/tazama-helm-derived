@@ -1,0 +1,371 @@
+{{- if and (not .Values.infrastructure.postgres.enabled) .Values.infrastructure.postgres.external.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-external-init-script
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+data:
+  init-external.sql: |
+    -- Idempotent database creation using DO blocks
+    -- PostgreSQL doesn't support CREATE DATABASE IF NOT EXISTS directly
+    
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'configuration') THEN
+        CREATE DATABASE configuration;
+      END IF;
+    END $$;
+    
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'event_history') THEN
+        CREATE DATABASE event_history;
+      END IF;
+    END $$;
+    
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'raw_history') THEN
+        CREATE DATABASE raw_history;
+      END IF;
+    END $$;
+    
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'evaluation') THEN
+        CREATE DATABASE evaluation;
+      END IF;
+    END $$;
+    
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'tazama') THEN
+        CREATE DATABASE tazama;
+      END IF;
+    END $$;
+    
+    -- Connect to configuration database and create tables
+    \connect configuration
+    
+    CREATE TABLE IF NOT EXISTS network_map (
+        configuration jsonb not null,
+        tenantId text generated always as (configuration ->> 'tenantId') stored
+    );
+    
+    CREATE TABLE IF NOT EXISTS typology (
+        configuration jsonb not null,
+        typologyId text generated always as (configuration ->> 'id') stored,
+        typologyCfg text generated always as (configuration ->> 'cfg') stored,
+        tenantId text generated always as (configuration ->> 'tenantId') stored,
+        primary key (typologyId, typologyCfg, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS rule (
+        configuration jsonb not null,
+        ruleId text generated always as (configuration ->> 'id') stored,
+        ruleCfg text generated always as (configuration ->> 'cfg') stored,
+        tenantId text generated always as (configuration ->> 'tenantId') stored,
+        primary key (ruleId, ruleCfg, tenantId)
+    );
+    
+    -- Connect to evaluation database
+    \connect evaluation
+    
+    CREATE TABLE IF NOT EXISTS evaluation (
+        evaluation jsonb not null,
+        messageId text generated always as (
+            evaluation -> 'transaction' -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'MsgId'
+        ) stored,
+        tenantId text generated always as (evaluation -> 'transaction' ->> 'TenantId') stored,
+        constraint unique_msgid_evaluation unique (messageId, tenantId)
+    );
+    
+    -- Connect to event_history database
+    \connect event_history
+    
+    CREATE TABLE IF NOT EXISTS account (
+        id varchar not null,
+        tenantId text not null,
+        primary key (id, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS entity (
+        id varchar not null,
+        tenantId text not null,
+        creDtTm timestamptz not null,
+        primary key (id, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS account_holder (
+        source varchar not null,
+        destination varchar not null,
+        tenantId text not null,
+        creDtTm timestamptz not null,
+        primary key (source, destination, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS condition (
+        id varchar generated always as (condition ->> 'condId') stored,
+        tenantId text generated always as (condition ->> 'tenantId') stored,
+        condition jsonb not null,
+        primary key (id, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS governed_as_creditor_account_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp text [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        primary key (source, destination, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS governed_as_creditor_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp text [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        primary key (source, destination, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS governed_as_debtor_account_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp text [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        primary key (source, destination, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS governed_as_debtor_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp text [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        primary key (source, destination, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS transaction (
+        source varchar not null,
+        destination varchar not null,
+        transaction jsonb not null,
+        endToEndId text generated always as (transaction->>'EndToEndId') stored,
+        amt numeric(18, 2) generated always as (
+            (transaction->>'Amt')::numeric(18, 2)
+        ) stored,
+        ccy varchar generated always as (transaction->>'Ccy') stored,
+        msgId varchar generated always as (transaction->>'MsgId') stored,
+        creDtTm text generated always as (transaction->>'CreDtTm') stored,
+        txTp varchar generated always as (transaction->>'TxTp') stored,
+        txSts varchar generated always as (transaction->>'TxSts') stored,
+        tenantId text generated always as (transaction->>'TenantId') stored,
+        constraint unique_msgid unique (msgId, tenantId),
+        primary key (endToEndId, txTp, tenantId)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_tr_cre_dt_tm on transaction (creDtTm, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_tr_source_txtp_credttm ON transaction (source, txtp, creDtTm, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_tr_pacs002_accc on transaction (endtoendid, creDtTm, tenantId) where txtp = 'pacs.002.001.12' and txsts = 'ACCC';
+    CREATE INDEX IF NOT EXISTS idx_tr_dest_txtp_txsts_credttm on transaction (destination, txtp, txsts, creDtTm desc) include (source);
+    
+    -- Connect to raw_history database
+    \connect raw_history
+    
+    CREATE TABLE IF NOT EXISTS pacs002 (
+        document jsonb not null,
+        creDtTm text generated always as (document -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'CreDtTm') stored,
+        messageId text generated always as (document -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'FIToFIPmtSts' -> 'TxInfAndSts' ->> 'OrgnlEndToEndId') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_pacs002 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint cre_dt_tm check (creDtTm is not null),
+        primary key (endToEndId, tenantId)
+    );
+    
+    CREATE TABLE IF NOT EXISTS pacs008 (
+        document jsonb not null,
+        creDtTm text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'GrpHdr' ->> 'CreDtTm') stored,
+        messageId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pacs008 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint cre_dt_tm check (creDtTm is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_pacs008_dbtr_acct_id on pacs008 (debtorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pacs008_cdtr_acct_id on pacs008 (creditorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pacs008_credttm on pacs008 (creDtTm, tenantId);
+    
+    CREATE TABLE IF NOT EXISTS pain001 (
+        document jsonb not null,
+        creDtTm text generated always as (document -> 'CstmrCdtTrfInitn' -> 'GrpHdr' ->> 'CreDtTm') stored,
+        messageId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pain001 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint cre_dt_tm check (creDtTm is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_pain001_dbtr_acct_id on pain001 (debtorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pain001_cdtr_acct_id on pain001 (creditorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pain001_credttm on pain001 (creDtTm, tenantId);
+    
+    CREATE TABLE IF NOT EXISTS pain013 (
+        document jsonb not null,
+        creDtTm text generated always as (document -> 'CdtrPmtActvtnReq' -> 'GrpHdr' ->> 'CreDtTm') stored,
+        messageId text generated always as (document -> 'CdtrPmtActvtnReq' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'CdtrPmtActvtnReq' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'CdtrPmtActvtnReq' -> 'PmtInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'CdtrPmtActvtnReq' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pain013 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint cre_dt_tm check (creDtTm is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_pain013_dbtr_acct_id on pain013 (debtorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pain013_cdtr_acct_id on pain013 (creditorAccountId, tenantId);
+    CREATE INDEX IF NOT EXISTS idx_pain013_credttm on pain013 (creDtTm, tenantId);
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-external-init
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-4"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    app.kubernetes.io/name: postgres-external-init
+    app.kubernetes.io/component: database-initializer
+    app.kubernetes.io/part-of: tazama
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      name: postgres-external-init
+      labels:
+        app.kubernetes.io/name: postgres-external-init
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+        - name: postgres-init
+          image: "{{ .Values.infrastructure.postgres.image | default "postgres:15-alpine" }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+          env:
+            - name: PGHOST
+              value: "{{ .Values.infrastructure.postgres.external.host }}"
+            - name: PGPORT
+              value: "{{ .Values.infrastructure.postgres.external.port | toString }}"
+            - name: PGDATABASE
+              value: "{{ .Values.infrastructure.postgres.external.database }}"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.infrastructure.postgres.external.secretRef.name }}"
+                  key: "{{ .Values.infrastructure.postgres.external.secretRef.keys.username }}"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ .Values.infrastructure.postgres.external.secretRef.name }}"
+                  key: "{{ .Values.infrastructure.postgres.external.secretRef.keys.password }}"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting external database initialization..."
+              echo "Connecting to ${PGHOST}:${PGPORT}/${PGDATABASE}..."
+              
+              # Wait for database to be ready (with retries)
+              max_attempts=30
+              attempt=0
+              while [ $attempt -lt $max_attempts ]; do
+                if pg_isready -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d "postgres" >/dev/null 2>&1; then
+                  echo "Database connection successful"
+                  break
+                fi
+                attempt=$((attempt + 1))
+                echo "Waiting for database... attempt ${attempt}/${max_attempts}"
+                sleep 5
+              done
+              
+              if [ $attempt -eq $max_attempts ]; then
+                echo "ERROR: Database not ready after ${max_attempts} attempts"
+                exit 1
+              fi
+              
+              # Run the initialization script
+              echo "Running initialization script..."
+              if psql -f /scripts/init-external.sql; then
+                echo "Database initialization completed successfully"
+                exit 0
+              else
+                echo "Database initialization failed"
+                exit 1
+              fi
+          volumeMounts:
+            - name: init-script
+              mountPath: /scripts
+              readOnly: true
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-tmp
+              mountPath: /tmp
+      volumes:
+        - name: init-script
+          configMap:
+            name: postgres-external-init-script
+        - name: postgres-run
+          emptyDir: {}
+        - name: postgres-tmp
+          emptyDir: {}
+{{- end }}
