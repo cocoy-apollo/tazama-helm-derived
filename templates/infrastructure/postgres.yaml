@@ -56,6 +56,7 @@ data:
     create table account (
         id varchar not null,
         tenantId text not null,
+        creDtTm timestamptz not null,
         primary key (id, tenantId)
     );
 

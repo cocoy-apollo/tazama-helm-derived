@@ -13,6 +13,7 @@ A flexible Helm chart for deploying the Tazama financial crime detection platfor
 - [Key Concepts](#key-concepts)
 - [Infrastructure Options](#infrastructure-options)
 - [Installation](#installation)
+- [Using the TMS API](#using-the-tms-api)
 - [Configuration Reference](#configuration-reference)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -309,6 +310,261 @@ kubectl logs -n tazama deployment/tms | grep -i nats
 ```
 
 ---
+
+
+
+---
+
+## Using the TMS API
+
+This section describes how to access and use the TMS (Transaction Monitoring Service) API after deployment.
+
+### Service Exposure (Required for External Access)
+
+**IMPORTANT**: By default, the TMS service is only accessible within the Kubernetes cluster. To connect from outside the cluster, you **must expose the service first**.
+
+#### Option 1: Port-Forward (Quick Testing)
+
+```bash
+# Port-forward the tms-service to localhost:8080
+kubectl port-forward svc/tms-service 8080:80 -n tazama-internal
+
+# Now access at: http://localhost:8080
+```
+
+#### Option 2: LoadBalancer Service (Production)
+
+```bash
+# Patch the tms-service to use LoadBalancer type
+kubectl patch svc tms-service -n tazama-internal -p '{"spec":{"type":"LoadBalancer"}}'
+
+# Get the external IP
+kubectl get svc tms-service -n tazama-internal
+```
+
+Or add to your `values.yaml`:
+
+```yaml
+service:
+  tms:
+    type: LoadBalancer
+    port: 80
+```
+
+#### Option 3: Ingress (Recommended for Production)
+
+```yaml
+# values.yaml
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: tms.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: tms-service
+          port: 80
+```
+
+> **Note**: All examples below assume you have network access to the TMS service (either inside the cluster or via one of the exposure methods above). Replace `TMS_HOST` with your actual endpoint.
+
+### TMS API Endpoints
+
+#### Health Check
+
+```bash
+# Inside cluster: http://tms-service.tazama-internal.svc.cluster.local:80
+# Port-forward: http://localhost:8080
+
+curl http://TMS_HOST/health
+```
+
+Expected response:
+```json
+{"status": "ok", "timestamp": "2025-01-15T10:30:00Z"}
+```
+
+#### Evaluate ISO 20022 Message
+
+**Endpoint**: `POST /v1/evaluate/iso20022/{messageType}`
+
+**Supported Message Types**:
+| Message Type | Description |
+|--------------|-------------|
+| pacs.008 | Financial Institution to Financial Institution Customer Credit Transfer |
+| pacs.009 | Financial Institution to Financial Institution Customer Debit Transfer |
+| pain.001 | Customer Credit Transfer Initiation |
+
+##### Example: PACS.008 Evaluation
+
+```bash
+curl -X POST http://TMS_HOST/v1/evaluate/iso20022/pacs.008 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "AppHdr": {
+        "Fr": {"FIId": {"FinInstnId": {"Nm": "BANK_A"}}},
+        "To": {"FIId": {"FinInstnId": {"Nm": "BANK_B"}}},
+        "BizMsgIdr": "MSG-001",
+        "MsgDefIdr": "pacs.008.001.09",
+        "CreDt": "2025-01-15T00:00:00Z"
+      },
+      "Document": {
+        "FIToFICstmrCdtTrf": {
+          "CdtTrfTxInf": {
+            "PmtId": {
+              "EndToEndId": "E2E-001",
+              "TxId": "TX-001"
+            }
+          }
+        }
+      }
+    }
+  }'
+```
+
+##### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message.AppHdr` | object | Yes | ISO 20022 Application Header |
+| `message.AppHdr.Fr` | object | Yes | Sender identification |
+| `message.AppHdr.To` | object | Yes | Receiver identification |
+| `message.AppHdr.BizMsgIdr` | string | Yes | Business Message Identifier |
+| `message.AppHdr.MsgDefIdr` | string | Yes | Message Definition Identifier |
+| `message.Document` | object | Yes | ISO 20022 document payload |
+
+##### Response Schema
+
+```json
+{
+  "evaluationId": "uuid",
+  "messageType": "pacs.008",
+  "status": "completed",
+  "results": {
+    "typologies": [
+      {
+        "id": "typology-1",
+        "name": "Screening Typology",
+        "status": "pass",
+        "score": 85
+      }
+    ],
+    "transaction": {
+      "id": "transaction-uuid",
+      "status": "evaluated"
+    }
+  },
+  "timestamp": "2025-01-15T10:30:00Z"
+}
+```
+
+##### Error Responses
+
+| HTTP Code | Description |
+|-----------|-------------|
+| 400 | Bad Request - Invalid message format |
+| 404 | Not Found - Unsupported message type |
+| 500 | Internal Server Error |
+| 503 | Service Unavailable |
+
+### Verifying TMS Service Status
+
+```bash
+# Check TMS pod status
+kubectl get pods -n tazama-internal -l app=tms-service
+
+# Check TMS service endpoints
+kubectl get endpoints tms-service -n tazama-internal
+
+# Check TMS logs
+kubectl logs -n tazama-internal -l app=tms-service --tail=50
+```
+
+### Troubleshooting TMS API
+
+#### Connection Refused
+
+1. Verify the service is running:
+   ```bash
+   kubectl get svc tms-service -n tazama-internal
+   ```
+
+2. Check if port-forward is active (if using port-forward):
+   ```bash
+   kubectl port-forward svc/tms-service 8080:80 -n tazama-internal
+   ```
+
+3. Verify pod health:
+   ```bash
+   kubectl describe pod -n tazama-internal -l app=tms-service
+   ```
+
+#### 503 Service Unavailable
+
+Wait for the pod to be ready:
+```bash
+kubectl wait --for=condition=ready pod -l app=tms-service -n tazama-internal --timeout=120s
+```
+
+#### Database Connection Errors
+
+```bash
+# Check database pod
+kubectl get pods -n tazama-internal -l app=postgres
+
+# Verify database credentials secret exists
+kubectl get secret tazama-db-credentials -n tazama-internal
+```
+
+
+### Database Schema Reference
+
+The TMS service expects the following PostgreSQL tables (compatible with frms-coe-lib):
+
+#### `account` Table
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | varchar | NO | Account identifier |
+| `tenantId` | text | NO | Tenant identifier (multi-tenancy) |
+| `creDtTm` | timestamptz | NO | Creation timestamp (**required** for frms-coe-lib compatibility) |
+| Primary Key: (`id`, `tenantId`) |
+
+#### `party` Table
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | varchar | NO | Party identifier |
+| `accountId` | varchar | NO | Foreign key to account.id |
+| `tenantId` | text | NO | Tenant identifier |
+| `role` | text | NO | Party role (debtor, creditor, etc.) |
+| Primary Key: (`id`, `tenantId`) |
+
+#### `event` Table
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | varchar | NO | Event identifier |
+| `tenantId` | text | NO | Tenant identifier |
+| `eventType` | text | NO | Type of event |
+| `payload` | jsonb | YES | Event payload |
+| `creDtTm` | timestamptz | NO | Creation timestamp |
+| Primary Key: (`id`, `tenantId`) |
+
+#### `event_history` Table
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | varchar | NO | History record identifier |
+| `eventId` | varchar | NO | Foreign key to event.id |
+| `tenantId` | text | NO | Tenant identifier |
+| `action` | text | NO | Action performed |
+| `timestamp` | timestamptz | NO | Action timestamp |
+| Primary Key: (`id`, `tenantId`) |
+
+> **Note**: All tables use composite primary keys with `tenantId` for multi-tenancy. The `creDtTm` column in the `account` table is **required** for the `eventHistoryBuilder.saveAccount()` function in frms-coe-lib.
 
 ## Configuration Reference
 

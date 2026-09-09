@@ -4,6 +4,12 @@
   
   C1, C3: Only rendered when internal valkey is enabled
   When external: user connects to external Redis/Valkey cluster
+  
+  FIX: Added emptyDir volume for data directory to support readOnlyRootFilesystem
+  Valkey requires writable storage for:
+  - dump.rdb (RDB snapshots)
+  - AOF log files (if AOF persistence enabled)
+  - Temporary rewrite buffers
 */ -}}
 {{- if include "tazama.infrastructure.internal.enabled" (dict "component" "valkey" "context" $) }}
 apiVersion: apps/v1
@@ -47,10 +53,22 @@ spec:
             runAsUser: 1000
             readOnlyRootFilesystem: true
           command: ["valkey-server"]
-          args: ["--port", "6379", "--loglevel", "verbose"]
+          args:
+            - "--port"
+            - "6379"
+            - "--loglevel"
+            - "verbose"
+            - "--dir"
+            - "/data"
+            - "--save"
+            - "60"
+            - "1"
           ports:
             - containerPort: 6379
               name: valkeyport
+          volumeMounts:
+            - name: valkey-data
+              mountPath: /data
           livenessProbe:
             tcpSocket:
               port: 6379
@@ -65,6 +83,9 @@ spec:
           resources:
             {{- toYaml .Values.infrastructure.valkey.resources | nindent 12 }}
           {{- end }}
+      volumes:
+        - name: valkey-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
