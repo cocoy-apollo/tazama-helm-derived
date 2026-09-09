@@ -25,8 +25,10 @@ This branch is configured for **internal-only deployment** with all infrastructu
 
 ### Quick Start
 
+For this branch, `values.yaml` is identical to `values-internal.yaml` and contains the complete internal deployment configuration.
+
 ```bash
-# Deploy using values-internal.yaml
+# Deploy using values.yaml (or values-internal.yaml)
 helm install tazama ./tazama-helm-derived \
   -n tazama-internal --create-namespace \
   -f values-internal.yaml
@@ -125,6 +127,77 @@ This chart supports **flexible infrastructure deployment**:
 - Kubernetes 1.19+
 - Helm 3.8+
 - `kubectl` configured to access your cluster
+
+### Step 0: Create Required Secrets (Internal Deployment)
+
+> **IMPORTANT**: Create the database credentials secret BEFORE installing the chart.
+
+The internal deployment requires a Kubernetes Secret for PostgreSQL database credentials. The Helm chart will automatically reference this secret.
+
+#### Required Secret Template
+
+```yaml
+# File: tazama-db-credentials.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tazama-db-credentials
+  namespace: tazama-internal
+type: Opaque
+stringData:
+  POSTGRES_USER: "tazama"
+  POSTGRES_PASSWORD: "<CHANGE_ME_SECURE_PASSWORD>"
+---
+# Alternative: Create directly via kubectl
+# kubectl create secret generic tazama-db-credentials \
+#   --from-literal=POSTGRES_USER=tazama \
+#   --from-literal=POSTGRES_PASSWORD=<CHANGE_ME_SECURE_PASSWORD> \
+#   -n tazama-internal
+```
+
+#### Create the Secret
+
+```bash
+# Create namespace first
+kubectl create namespace tazama-internal
+
+# Create the secret (replace YOUR_SECURE_PASSWORD)
+kubectl create secret generic tazama-db-credentials \
+  --from-literal=POSTGRES_USER=tazama \
+  --from-literal=POSTGRES_PASSWORD=YOUR_SECURE_PASSWORD \
+  -n tazama-internal
+```
+
+#### Required Secret Keys
+
+| Key | Description | Used By |
+|-----|-------------|---------|
+| `POSTGRES_USER` | Database username | PostgreSQL init, all Tazama services |
+| `POSTGRES_PASSWORD` | Database password | PostgreSQL init, all Tazama services |
+
+> **Note**: For internal mode, the Helm chart creates a release secret `tazama-release-secret` that contains the actual database credential keys referenced by services:
+> - `CONFIGURATION_DATABASE_USER` / `CONFIGURATION_DATABASE_PASSWORD`
+> - `EVENT_HISTORY_DATABASE_USER` / `EVENT_HISTORY_DATABASE_PASSWORD`
+> - `EVALUATION_DATABASE_USER` / `EVALUATION_DATABASE_PASSWORD`
+> - `RAW_HISTORY_DATABASE_USER` / `RAW_HISTORY_DATABASE_PASSWORD`
+
+#### For Production
+
+For production deployments, use stronger passwords and consider:
+
+1. **External Secrets Operator** - Sync from HashiCorp Vault, AWS Secrets Manager, etc.
+2. **Sealed Secrets** - Encrypt secrets in Git
+3. **SOPS** - Encrypt secrets files before committing
+
+```bash
+# Example: Strong password generation
+kubectl create secret generic tazama-db-credentials \
+  --from-literal=POSTGRES_USER=tazama \
+  --from-literal=POSTGRES_PASSWORD=$(openssl rand -base64 32) \
+  -n tazama-internal
+```
+
+---
 
 ### Internal Deployment (This Branch)
 

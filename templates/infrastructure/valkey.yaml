@@ -52,13 +52,13 @@ spec:
             - containerPort: 6379
               name: valkeyport
           livenessProbe:
-            exec:
-              command: ["sh", "-c", "valkey-cli -p 6379 ping | grep PONG"]
+            tcpSocket:
+              port: 6379
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
-            exec:
-              command: ["sh", "-c", "valkey-cli -p 6379 ping | grep PONG"]
+            tcpSocket:
+              port: 6379
             initialDelaySeconds: 3
             periodSeconds: 5
           {{- if .Values.infrastructure.valkey.resources }}
