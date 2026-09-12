@@ -1,0 +1,5 @@
+Error: tazama/templates/typologies/typologies.yaml:275:14
+  executing "tazama/templates/typologies/typologies.yaml" at <.Values.typologies.autoscaling.enabled>:
+    nil pointer evaluating interface {}.enabled
+
+Use --debug flag to render out invalid YAML

@@ -514,7 +514,7 @@ typologies:
   main:
     name: "Anti-Money Laundering Detection"
     description: "Primary typology for AML transaction monitoring using all available detection rules"
-    enabled: true
+    enabled: false
     rules:
       - rule-001
       - rule-002
@@ -541,7 +541,7 @@ typologies:
   account-behavior:
     name: "Account Behavior Analysis"
     description: "Rules focused on account lifecycle and behavior patterns"
-    enabled: true
+    enabled: false
     rules:
       - rule-001
       - rule-003
@@ -554,7 +554,7 @@ typologies:
   transaction-patterns:
     name: "Transaction Pattern Detection"
     description: "Rules focused on transaction amount and frequency patterns"
-    enabled: true
+    enabled: false
     rules:
       - rule-006
       - rule-007
@@ -568,7 +568,7 @@ typologies:
   structuring-detection:
     name: "Structuring Detection"
     description: "Rules focused on detecting potential structuring behaviors"
-    enabled: true
+    enabled: false
     rules:
       - rule-002
       - rule-016

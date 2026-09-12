@@ -317,6 +317,31 @@ rules: {}
 # Typologies group rules together for evaluation
 # Override with values-internal.yaml
 # ==============================================================================
+# ==============================================================================
+# TYPOLOGY DEFAULTS CONFIGURATION
+# ==============================================================================
+# Default settings applied to all typology processors
+# Can be overridden per-typology in the typologies section
+# ==============================================================================
+typologyDefaults:
+  replicas: 1
+  waitForSchema: true
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 2Gi
+    limits:
+      cpu: 500m
+      memory: 2Gi
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+
 typologies: {}
 
 # ==============================================================================

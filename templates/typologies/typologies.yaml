@@ -272,7 +272,7 @@ spec:
 
 ---
 {{- /* HorizontalPodAutoscaler for typologies - allows dynamic scaling based on load */}}
-{{- if .Values.typologies.autoscaling.enabled }}
+{{- if .Values.typologyDefaults.autoscaling.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -285,13 +285,13 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: main-typology
-  minReplicas: {{ .Values.typologies.autoscaling.minReplicas | default 1 }}
-  maxReplicas: {{ .Values.typologies.autoscaling.maxReplicas | default 5 }}
+  minReplicas: {{ .Values.typologyDefaults.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.typologyDefaults.autoscaling.maxReplicas | default 5 }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.typologies.autoscaling.targetCPUUtilizationPercentage | default 70 }}
+          averageUtilization: {{ .Values.typologyDefaults.autoscaling.targetCPUUtilizationPercentage | default 70 }}
 {{- end }}
