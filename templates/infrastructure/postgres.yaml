@@ -1,182 +1,282 @@
+{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "postgres" "context" $) }}
+# Source: tazama/templates/infrastructure/postgres.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: postgres-init
+  name: postgres-init-script
+  namespace: {{ .Release.Namespace }}          # FIX: was missing namespace
 data:
-  init.sql: |
-    create database enrichment;
-    
-    -- Network Map Table - Official Tazama Schema
-    -- Primary Key: (cfg, tenantId)
-    -- Generated columns extracted from configuration jsonb
-    create table network_map (
-      configuration jsonb NOT NULL,
-      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
-      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
-      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
-      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
-      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
-      PRIMARY KEY (cfg, tenantId)
-    );
-    
-    create index idx_networkmap_active_tenant on network_map (tenantId) WHERE active = true;
-    create index idx_networkmap_cre_dt_tm on network_map (creDtTm, tenantId);
-    create index idx_networkmap_upd_dt_tm on network_map (updDtTm, tenantId);
+  00-CREATE.sql: |
+    -- NOTE: this script runs via `psql -f`, connected to POSTGRES_DB ("configuration") by default.
+    -- `configuration` DB already exists (created by the Postgres entrypoint via POSTGRES_DB env var),
+    -- so we do NOT create it again. We use `\c` to switch DBs for the rest of the schema.
 
-    -- Typology Table - Official Tazama Schema
-    -- Primary Key: (cfg, tenantId)
-    create table typology (
-      configuration jsonb NOT NULL,
-      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
-      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
-      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
-      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
-      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
-      PRIMARY KEY (cfg, tenantId)
+    -- Create the remaining databases
+    create database event_history;
+    create database raw_history;
+    create database evaluation;
+
+    -- ===================== configuration (current connection) =====================
+    create table public.network_map (
+        configuration jsonb not null,
+        cfg text generated always as (configuration ->> 'cfg') stored,
+        active boolean not null default false
     );
 
-    create index idx_typology_active_tenant on typology (tenantId) WHERE active = true;
-    create index idx_typology_cre_dt_tm on typology (creDtTm, tenantId);
-    create index idx_typology_upd_dt_tm on typology (updDtTm, tenantId);
-
-    -- Rule Table - Official Tazama Schema
-    -- Primary Key: (cfg, tenantId)
-    create table rule (
-      configuration jsonb NOT NULL,
-      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
-      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
-      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
-      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
-      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
-      PRIMARY KEY (cfg, tenantId)
+    create table public.typology (
+        configuration jsonb not null,
+        typologyId text generated always as (configuration ->> 'id') stored,
+        typologyCfg text generated always as (configuration ->> 'cfg') stored,
+        tenantId text generated always as (configuration ->> 'tenantId') stored,
+        primary key (typologyId, typologyCfg, tenantId)
     );
 
-    create index idx_rule_active_tenant on rule (tenantId) WHERE active = true;
-    create index idx_rule_cre_dt_tm on rule (creDtTm, tenantId);
-    create index idx_rule_upd_dt_tm on rule (updDtTm, tenantId);
-
-    -- Evaluation Table - Official Tazama Schema
-    -- Includes messageid extraction with coalesce for multiple message types
-    create table evaluation (
-      evaluation jsonb NOT NULL,
-      messageid text GENERATED ALWAYS AS (
-        coalesce(
-          evaluation -> 'transaction' -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'MsgId',
-          evaluation -> 'transaction' -> 'FIToFICstmrCdtTrf' -> 'GrpHdr' ->> 'MsgId',
-          evaluation -> 'transaction' -> 'CstmrCdtTrfInitn' -> 'GrpHdr' ->> 'MsgId',
-          evaluation -> 'transaction' -> 'CdtrPmtActvtnReq' -> 'GrpHdr' ->> 'MsgId'
-        )
-      ) STORED,
-      tenantId text GENERATED ALWAYS AS (evaluation ->> 'tenantId') STORED,
-      creDtTm text GENERATED ALWAYS AS (evaluation -> 'report' ->> 'timestamp') STORED
+    create table public.rule (
+        configuration jsonb not null,
+        ruleId text generated always as (configuration ->> 'id') stored,
+        ruleCfg text generated always as (configuration ->> 'cfg') stored,
+        tenantId text generated always as (configuration ->> 'tenantId') stored,
+        primary key (ruleId, ruleCfg, tenantId)
     );
 
-    create index idx_evaluation_cre_dt_tm on evaluation (creDtTm, tenantId);
-
-    -- Message Tables - Preserving original structure
-    create table pacs002 (
-      id uuid DEFAULT gen_random_uuid(),
-      message jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
-      PRIMARY KEY (id, tenantId)
+    create table public.typology_rule (
+        typologyConfiguration jsonb not null,
+        typologyId text generated always as (typologyConfiguration ->> 'id') stored,
+        typologyCfg text generated always as (typologyConfiguration ->> 'cfg') stored,
+        ruleConfiguration jsonb not null,
+        ruleId text generated always as (ruleConfiguration ->> 'id') stored,
+        ruleCfg text generated always as (ruleConfiguration ->> 'cfg') stored,
+        tenantId text generated always as (ruleConfiguration ->> 'tenantId') stored,
+        primary key (typologyId, typologyCfg, ruleId, ruleCfg, tenantId)
     );
 
-    create index idx_pacs002_tenant on pacs002 (tenantId);
-    create index idx_pacs002_cre_dt_tm on pacs002 (creDtTm);
+    -- ===================== evaluation =====================
+    \c evaluation
 
-    create table pacs008 (
-      id uuid DEFAULT gen_random_uuid(),
-      message jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
-      PRIMARY KEY (id, tenantId)
+    create table public.evaluation (
+        evaluation jsonb not null,
+        creDtTm text generated always as (evaluation -> 'report' ->> 'timestamp') stored,
+        tenantId text generated always as (evaluation -> 'transaction' ->> 'TenantId') stored,
+        constraint unique_tenant_tstamp unique (tenantId, creDtTm)
     );
 
-    create index idx_pacs008_tenant on pacs008 (tenantId);
-    create index idx_pacs008_cre_dt_tm on pacs008 (creDtTm);
+    -- ===================== event_history =====================
+    \c event_history
 
-    create table pain001 (
-      id uuid DEFAULT gen_random_uuid(),
-      message jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
-      PRIMARY KEY (id, tenantId)
+    create table public.account (
+        id varchar not null,
+        tenantId text not null,
+        creDtTm text not null,
+        primary key (id, tenantId)
     );
 
-    create index idx_pain001_tenant on pain001 (tenantId);
-    create index idx_pain001_cre_dt_tm on pain001 (creDtTm);
-
-    create table pain013 (
-      id uuid DEFAULT gen_random_uuid(),
-      message jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
-      PRIMARY KEY (id, tenantId)
+    create table public.entity (
+        id varchar not null,
+        tenantId text not null,
+        creDtTm timestamptz not null,
+        primary key (id, tenantId)
     );
 
-    create index idx_pain013_tenant on pain013 (tenantId);
-    create index idx_pain013_cre_dt_tm on pain013 (creDtTm);
-
-    create table pacs013 (
-      id uuid DEFAULT gen_random_uuid(),
-      message jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
-      PRIMARY KEY (id, tenantId)
+    create table public.account_holder (
+        source varchar not null,
+        destination varchar not null,
+        tenantId text not null,
+        creDtTm timestamptz not null,
+        foreign key (source, tenantId) references public.entity (id, tenantId),
+        foreign key (destination, tenantId) references public.account (id, tenantId),
+        primary key (source, destination, tenantId)
     );
 
-    create index idx_pacs013_tenant on pacs013 (tenantId);
-    create index idx_pacs013_cre_dt_tm on pacs013 (creDtTm);
-
-    -- DEMS Quarantine Table - Official Tazama Schema
-    -- For quarantine of failed DEMS deliveries
-    create table public.dems_quarantine (
-      id uuid NOT NULL,
-      correlation_id varchar(255) NULL,
-      tenant_id varchar(100) NOT NULL,
-      endpoint_path text NULL,
-      config_id varchar(255) NULL,
-      version varchar(50) NULL,
-      error text NULL,
-      raw_payload jsonb NULL,
-      status varchar(50) NULL,
-      created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id)
+    create table public.condition (
+        id varchar generated always as (condition ->> 'condId') stored,
+        tenantId text generated always as (condition ->> 'tenantId') stored,
+        condition jsonb not null,
+        primary key (id, tenantId)
     );
 
-    create index idx_dems_quarantine_tenant on dems_quarantine (tenant_id);
-    create index idx_dems_quarantine_status on dems_quarantine (status);
-    create index idx_dems_quarantine_created_at on dems_quarantine (created_at);
-
-    -- Event History Tables - Preserving original structure
-    create table event_history (
-      id uuid DEFAULT gen_random_uuid(),
-      event jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm timestamp DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id, tenantId)
+    create table public.governed_as_creditor_account_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp text [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        foreign key (source, tenantId) references public.account (id, tenantId),
+        foreign key (destination, tenantId) references public.condition (id, tenantId),
+        primary key (source, destination, tenantId)
     );
 
-    create index idx_event_history_tenant on event_history (tenantId);
-    create index idx_event_history_cre_dt_tm on event_history (creDtTm);
-
-    create table alert_event_history (
-      id uuid DEFAULT gen_random_uuid(),
-      event jsonb NOT NULL,
-      tenantId text NOT NULL,
-      creDtTm timestamp DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id, tenantId)
+    create table public.governed_as_creditor_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp TEXT [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        foreign key (source, tenantId) references public.entity (id, tenantId),
+        foreign key (destination, tenantId) references public.condition (id, tenantId),
+        primary key (source, destination, tenantId)
     );
 
-    create index idx_alert_event_history_tenant on alert_event_history (tenantId);
-    create index idx_alert_event_history_cre_dt_tm on alert_event_history (creDtTm);
+    create table public.governed_as_debtor_account_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp TEXT [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        foreign key (source, tenantId) references public.account (id, tenantId),
+        foreign key (destination, tenantId) references public.condition (id, tenantId),
+        primary key (source, destination, tenantId)
+    );
 
+    create table public.governed_as_debtor_by (
+        source varchar not null,
+        destination varchar not null,
+        evtTp TEXT [] not null,
+        incptnDtTm timestamptz not null,
+        xprtnDtTm timestamptz,
+        tenantId text not null,
+        foreign key (source, tenantId) references public.entity (id, tenantId),
+        foreign key (destination, tenantId) references public.condition (id, tenantId),
+        primary key (source, destination, tenantId)
+    );
+
+    create table public.transaction (
+        source varchar not null,
+        destination varchar not null,
+        transaction jsonb not null,
+        endToEndId text generated always as (transaction->>'EndToEndId') stored,
+        amt numeric(18, 2) generated always as (
+            (transaction->>'Amt')::numeric(18, 2)
+        ) stored,
+        ccy varchar generated always as (transaction->>'Ccy') stored,
+        msgId varchar generated always as (transaction->>'MsgId') stored,
+        creDtTm text generated always as (transaction->>'CreDtTm') stored,
+        txTp varchar generated always as (transaction->>'TxTp') stored,
+        txSts varchar generated always as (transaction->>'TxSts') stored,
+        tenantId text generated always as (transaction->>'TenantId') stored,
+        constraint unique_msgid unique (msgId, tenantId),
+        foreign key (source, tenantId) references public.account (id, tenantId),
+        foreign key (destination, tenantId) references public.account (id, tenantId),
+        primary key (endToEndId, txTp, tenantId)
+    );
+
+    create index idx_tr_cre_dt_tm on public.transaction (creDtTm, tenantId);
+    create index idx_tr_source_txtp_credttm ON public.transaction (source, txtp, creDtTm, tenantId);
+    create index idx_tr_pacs002_accc on public.transaction (endtoendid, creDtTm, tenantId) where txtp = 'pacs.002.001.12' and txsts = 'ACCC';
+    create index idx_tr_dest_txtp_txsts_credttm on public.transaction (destination, txtp, txsts, creDtTm desc) include (source);
+
+    -- audit schema (FIX: schemas cannot be dotted under another schema, e.g. public.audit)
+    create schema audit;
+
+    create table audit.schema_migration (
+        version integer not null,
+        name varchar not null,
+        applied_at timestamptz not null default now(),
+        primary key (version)
+    );
+
+    create table audit.query_log (
+        query_hash varchar not null,
+        query_text text,
+        executed_at timestamptz not null default now(),
+        execution_time_ms numeric(10,2),
+        rows_affected integer,
+        primary key (query_hash, executed_at)
+    );
+
+    create index idx_query_log_exec_time on audit.query_log (executed_at desc);
+
+    -- ===================== raw_history =====================
+    \c raw_history
+
+    create table public.pacs002 (
+        document jsonb not null,
+        messageId text generated always as (document -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'FIToFIPmtSts' -> 'TxInfAndSts' ->> 'OrgnlEndToEndId') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_pacs002 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        primary key (endToEndId, tenantId)
+    );
+
+    create table public.pacs008 (
+        document jsonb not null,
+        messageId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'FIToFICstmrCdtTrf' -> 'CdtTrfTxInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pacs008 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
+
+    create index idx_pacs008_dbtr_acct_id on public.pacs008 (debtorAccountId, tenantId);
+    create index idx_pacs008_cdtr_acct_id on public.pacs008 (creditorAccountId, tenantId);
+
+    create table public.pain001 (
+        document jsonb not null,
+        messageId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'CstmrCdtTrfInitn' -> 'PmtInf' -> 'CdtTrfTxInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pain001 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
+
+    create table public.pain013 (
+        document jsonb not null,
+        messageId text generated always as (document -> 'CstmrDrpDctInitn' -> 'GrpHdr' ->> 'MsgId') stored,
+        endToEndId text generated always as (document -> 'CstmrDrpDctInitn' -> 'DrpDctInf' -> 'PmtId' ->> 'EndToEndId') stored,
+        debtorAccountId text generated always as (document -> 'CstmrDrpDctInitn' -> 'DrpDctInf' -> 'DbtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        creditorAccountId text generated always as (document -> 'CstmrDrpDctInitn' -> 'DrpDctInf' -> 'CdtrAcct' -> 'Id' -> 'Othr' -> 0 ->> 'Id') stored,
+        tenantId text generated always as (document ->> 'TenantId' ) stored,
+        constraint unique_msgid_e2eid_pain013 unique (messageId, tenantId),
+        constraint message_id_not_null check (messageId is not null),
+        constraint dbtr_acct_id_not_null check (debtorAccountId is not null),
+        constraint cdtr_acct_id_not_null check (creditorAccountId is not null),
+        primary key (endToEndId, tenantId)
+    );
 ---
+# PostgreSQL PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: tazama
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.infrastructure.postgres.storageSize | default "10Gi" }}
+---
+# PostgreSQL StatefulSet
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: tazama
+    {{- include "tazama.labels" $ | nindent 4 }}
 spec:
   serviceName: postgres
   replicas: 1
@@ -187,50 +287,136 @@ spec:
     metadata:
       labels:
         app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
     spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      # FIX: init container runs briefly as root to guarantee ownership/permissions
+      # on the mounted volumes, since fsGroup alone doesn't always satisfy Postgres's
+      # strict permission checks (it requires PGDATA to be exactly 0700/0750, not
+      # group-writable), and the main container never runs as root to fix this itself.
+      initContainers:
+        - name: fix-permissions
+          image: {{ .Values.infrastructure.postgres.image | default "postgres:18-alpine" | quote }}
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              mkdir -p /var/lib/postgresql/data/pgdata
+              mkdir -p /var/run/postgresql
+              chown -R 999:999 /var/lib/postgresql/data /var/run/postgresql /tmp
+              chmod 700 /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-tmp
+              mountPath: /tmp
       containers:
-      - name: postgres
-        image: postgres:16
-        ports:
-        - containerPort: 5432
-        env:
-        - name: POSTGRES_DB
-          value: enrichment
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: username
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: password
-        volumeMounts:
-        - name: postgres-storage
-          mountPath: /var/lib/postgresql/data
-        - name: init-scripts
-          mountPath: /docker-entrypoint-initdb.d
+        - name: postgres
+          image: {{ .Values.infrastructure.postgres.image | default "postgres:18-alpine" | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false     # FIX: was true, unnecessary and less secure
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_PASSWORD
+            - name: POSTGRES_DB
+              value: configuration
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata   # FIX: now matches the volume mountPath
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: tazama-shared-secrets
+                  key: CONFIGURATION_DATABASE_USER
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data     # FIX: mount the parent dir; PGDATA is the pgdata/ subdir inside it
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-tmp
+              mountPath: /tmp
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: false
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- if .Values.infrastructure.postgres.resources }}
+          resources:
+            {{- toYaml .Values.infrastructure.postgres.resources | nindent 12 }}
+          {{- end }}
       volumes:
-      - name: init-scripts
-        configMap:
-          name: postgres-init
-  volumeClaimTemplates:
-  - metadata:
-      name: postgres-storage
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data
+        - name: postgres-run
+          emptyDir: {}
+        - name: postgres-tmp
+          emptyDir: {}
+        - name: init-scripts
+          configMap:
+            name: postgres-init-script
 ---
+# PostgreSQL Service
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: tazama
 spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
   selector:
     app: postgres
-  ports:
-  - port: 5432
-    targetPort: 5432
+  clusterIP: None
+{{- end }}

@@ -1,0 +1,252 @@
+{{- if include "tazama.infrastructure.internal.enabled" (dict "component" "postgres" "context" $) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  init.sql: |
+    create database enrichment;
+    
+    -- Network Map Table - Official Tazama Schema
+    -- Primary Key: (cfg, tenantId)
+    -- Generated columns extracted from configuration jsonb
+    create table network_map (
+      configuration jsonb NOT NULL,
+      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
+      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
+      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
+      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
+      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
+      PRIMARY KEY (cfg, tenantId)
+    );
+    
+    create index idx_networkmap_active_tenant on network_map (tenantId) WHERE active = true;
+    create index idx_networkmap_cre_dt_tm on network_map (creDtTm, tenantId);
+    create index idx_networkmap_upd_dt_tm on network_map (updDtTm, tenantId);
+
+    -- Typology Table - Official Tazama Schema
+    -- Primary Key: (cfg, tenantId)
+    create table typology (
+      configuration jsonb NOT NULL,
+      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
+      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
+      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
+      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
+      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
+      PRIMARY KEY (cfg, tenantId)
+    );
+
+    create index idx_typology_active_tenant on typology (tenantId) WHERE active = true;
+    create index idx_typology_cre_dt_tm on typology (creDtTm, tenantId);
+    create index idx_typology_upd_dt_tm on typology (updDtTm, tenantId);
+
+    -- Rule Table - Official Tazama Schema
+    -- Primary Key: (cfg, tenantId)
+    create table rule (
+      configuration jsonb NOT NULL,
+      cfg text GENERATED ALWAYS AS (configuration ->> 'cfg') STORED,
+      tenantId text GENERATED ALWAYS AS (configuration ->> 'tenantId') STORED,
+      active boolean GENERATED ALWAYS AS ((configuration ->> 'active')::boolean) STORED,
+      creDtTm text GENERATED ALWAYS AS (configuration ->> 'creDtTm') STORED,
+      updDtTm text GENERATED ALWAYS AS (configuration ->> 'updDtTm') STORED,
+      PRIMARY KEY (cfg, tenantId)
+    );
+
+    create index idx_rule_active_tenant on rule (tenantId) WHERE active = true;
+    create index idx_rule_cre_dt_tm on rule (creDtTm, tenantId);
+    create index idx_rule_upd_dt_tm on rule (updDtTm, tenantId);
+
+    -- Evaluation Table - Official Tazama Schema
+    -- Includes messageid extraction with coalesce for multiple message types
+    create table evaluation (
+      evaluation jsonb NOT NULL,
+      messageid text GENERATED ALWAYS AS (
+        coalesce(
+          evaluation -> 'transaction' -> 'FIToFIPmtSts' -> 'GrpHdr' ->> 'MsgId',
+          evaluation -> 'transaction' -> 'FIToFICstmrCdtTrf' -> 'GrpHdr' ->> 'MsgId',
+          evaluation -> 'transaction' -> 'CstmrCdtTrfInitn' -> 'GrpHdr' ->> 'MsgId',
+          evaluation -> 'transaction' -> 'CdtrPmtActvtnReq' -> 'GrpHdr' ->> 'MsgId'
+        )
+      ) STORED,
+      tenantId text GENERATED ALWAYS AS (evaluation ->> 'tenantId') STORED,
+      creDtTm text GENERATED ALWAYS AS (evaluation -> 'report' ->> 'timestamp') STORED
+    );
+
+    create index idx_evaluation_cre_dt_tm on evaluation (creDtTm, tenantId);
+
+    -- Message Tables - Preserving original structure
+    create table pacs002 (
+      id uuid DEFAULT gen_random_uuid(),
+      message jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_pacs002_tenant on pacs002 (tenantId);
+    create index idx_pacs002_cre_dt_tm on pacs002 (creDtTm);
+
+    create table pacs008 (
+      id uuid DEFAULT gen_random_uuid(),
+      message jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_pacs008_tenant on pacs008 (tenantId);
+    create index idx_pacs008_cre_dt_tm on pacs008 (creDtTm);
+
+    create table pain001 (
+      id uuid DEFAULT gen_random_uuid(),
+      message jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_pain001_tenant on pain001 (tenantId);
+    create index idx_pain001_cre_dt_tm on pain001 (creDtTm);
+
+    create table pain013 (
+      id uuid DEFAULT gen_random_uuid(),
+      message jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_pain013_tenant on pain013 (tenantId);
+    create index idx_pain013_cre_dt_tm on pain013 (creDtTm);
+
+    create table pacs013 (
+      id uuid DEFAULT gen_random_uuid(),
+      message jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm text GENERATED ALWAYS AS (message -> 'GrpHdr' ->> 'CreDtTm') STORED,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_pacs013_tenant on pacs013 (tenantId);
+    create index idx_pacs013_cre_dt_tm on pacs013 (creDtTm);
+
+    -- DEMS Quarantine Table - Official Tazama Schema
+    -- For quarantine of failed DEMS deliveries
+    create table public.dems_quarantine (
+      id uuid NOT NULL,
+      correlation_id varchar(255) NULL,
+      tenant_id varchar(100) NOT NULL,
+      endpoint_path text NULL,
+      config_id varchar(255) NULL,
+      version varchar(50) NULL,
+      error text NULL,
+      raw_payload jsonb NULL,
+      status varchar(50) NULL,
+      created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    );
+
+    create index idx_dems_quarantine_tenant on dems_quarantine (tenant_id);
+    create index idx_dems_quarantine_status on dems_quarantine (status);
+    create index idx_dems_quarantine_created_at on dems_quarantine (created_at);
+
+    -- Event History Tables - Preserving original structure
+    create table event_history (
+      id uuid DEFAULT gen_random_uuid(),
+      event jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm timestamp DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_event_history_tenant on event_history (tenantId);
+    create index idx_event_history_cre_dt_tm on event_history (creDtTm);
+
+    create table alert_event_history (
+      id uuid DEFAULT gen_random_uuid(),
+      event jsonb NOT NULL,
+      tenantId text NOT NULL,
+      creDtTm timestamp DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id, tenantId)
+    );
+
+    create index idx_alert_event_history_tenant on alert_event_history (tenantId);
+    create index idx_alert_event_history_cre_dt_tm on alert_event_history (creDtTm);
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: {{ .Values.infrastructure.postgres.serviceName }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: postgres
+        image: "{{ .Values.infrastructure.postgres.image }}"
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: enrichment
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: tazama-shared-secrets
+              key: CONFIGURATION_DATABASE_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: tazama-shared-secrets
+              key: CONFIGURATION_DATABASE_PASSWORD
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: init-scripts
+        configMap:
+          name: postgres-init
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.infrastructure.postgres.storageSize }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+{{- end }}
