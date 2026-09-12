@@ -41,7 +41,7 @@ infrastructure:
     image: "postgres:18-alpine"
 
     # Primary storage for all tazama databases
-    storageSize: "5Gi"
+    storageSize: "10Gi"
 
     # StatefulSet immutable fields
     # serviceName: governs network identity for pods (cannot be changed after creation)
@@ -72,8 +72,8 @@ infrastructure:
       - evaluation
 
     # Connection defaults (for internal services)
-    port: 5432
-    database: "tazama"
+    # port: 5432
+    # database: "tazama"
 
     # Postgres-specific settings
     postgresql:
@@ -81,10 +81,10 @@ infrastructure:
       sharedBuffers: "256MB"
 
     # Credentials reference (auto-created by Helm)
-    auth:
-      database: tazama
-      username: tazama
-      # Password generated in release secret
+    # auth:
+    #   database: tazama
+    #   username: tazama
+    #   # Password generated in release secret
 
     # External mode disabled (internal only)
     external:
