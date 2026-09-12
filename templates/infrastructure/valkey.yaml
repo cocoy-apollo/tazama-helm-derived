@@ -9,7 +9,7 @@
   Valkey requires writable storage for:
   - dump.rdb (RDB snapshots)
   - AOF log files (if AOF persistence enabled)
-  - Temporary rewrite buffers
+  - Temporary rewrite buffers 
 */ -}}
 {{- if include "tazama.infrastructure.internal.enabled" (dict "component" "valkey" "context" $) }}
 apiVersion: apps/v1
